@@ -14,6 +14,25 @@ class _TransaksiPageState extends State<TransaksiPage> {
   static const Color kGreen = Color(0xFF1E874B);
   bool _isLoading = true;
   List<Map<String, dynamic>> _transactions = [];
+  String _searchQuery = '';
+
+  List<Map<String, dynamic>> get _filteredTransactions {
+    if (_searchQuery.trim().isEmpty) return _transactions;
+    final q = _searchQuery.toLowerCase();
+    return _transactions.where((t) {
+      final invoice = (t['invoice_id'] ?? t['id'] ?? '').toString().toLowerCase();
+      final customer = (t['customer'] ?? '').toString().toLowerCase();
+      final method = (t['payment_method'] ?? '').toString().toLowerCase();
+      final items = (t['items'] as List?)
+              ?.map((i) => i['name']?.toString().toLowerCase() ?? '')
+              .join(' ') ??
+          '';
+      return invoice.contains(q) ||
+          customer.contains(q) ||
+          method.contains(q) ||
+          items.contains(q);
+    }).toList();
+  }
 
   @override
   void initState() {
@@ -138,9 +157,9 @@ class _TransaksiPageState extends State<TransaksiPage> {
       backgroundColor: const Color(0xFFF8F9FA),
       appBar: CustomAppBar(
         title: 'Transaksi',
-        subtitle: 'Hari Ini \u2022 Mode Offline',
-        onSearchPressed: () {},
-        onNotificationPressed: () {},
+        searchHint: 'Cari invoice, pelanggan, atau produk...',
+        onSearchChanged: (q) => setState(() => _searchQuery = q),
+        onSearchClosed: () => setState(() => _searchQuery = ''),
       ),
       body: RefreshIndicator(
         color: kGreen,
@@ -278,7 +297,9 @@ class _TransaksiPageState extends State<TransaksiPage> {
                     ),
                   ),
                   Text(
-                    '${_transactions.length} Transaksi',
+                    _searchQuery.isNotEmpty
+                        ? '${_filteredTransactions.length} Ditemukan'
+                        : '${_transactions.length} Transaksi',
                     style: const TextStyle(
                       fontSize: 14,
                       color: kGreen,
@@ -313,9 +334,26 @@ class _TransaksiPageState extends State<TransaksiPage> {
                     ],
                   ),
                 )
+              else if (_filteredTransactions.isEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(32),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Column(
+                    children: [
+                      const Icon(Icons.search_off_rounded, size: 48, color: Colors.grey),
+                      const SizedBox(height: 8),
+                      Text('Tidak ditemukan transaksi untuk "$_searchQuery"',
+                          style: const TextStyle(color: Colors.grey)),
+                    ],
+                  ),
+                )
               else
                 Column(
-                  children: _transactions.map((trx) {
+                  children: _filteredTransactions.map((trx) {
                     return GestureDetector(
                       onTap: () => _showTransactionDetail(trx),
                       child: _TransactionCard(trx: trx, formatRp: _formatRp),

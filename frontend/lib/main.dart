@@ -1,208 +1,16 @@
 import 'package:flutter/material.dart';
 
-import 'pages/keranjang_page.dart';
-import 'pages/produk_page.dart';
-import 'pages/transaksi_page.dart';
-import 'pages/profil_page.dart';
+import 'app.dart';
 import 'services/api_config.dart';
 import 'services/api_service.dart';
-import 'services/cart_service.dart';
 import 'widgets/custom_app_bar.dart';
 
+export 'app.dart';
+export 'shell.dart';
+
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const MyApp());
-}
-
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Toko Kasir',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF164E2E),
-          primary: const Color(0xFF164E2E),
-        ),
-        useMaterial3: true,
-        scaffoldBackgroundColor: const Color(0xFFF8F9FA),
-      ),
-      builder: (context, child) {
-        return MediaQuery(
-          data: MediaQuery.of(context).copyWith(
-            textScaler: MediaQuery.of(context).textScaler.clamp(
-              minScaleFactor: 0.85,
-              maxScaleFactor: 1.15,
-            ),
-          ),
-          child: child!,
-        );
-      },
-      home: const MainShell(),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────
-// MAIN SHELL - Shared bottom nav controller
-// ─────────────────────────────────────────────
-class MainShell extends StatefulWidget {
-  const MainShell({super.key});
-
-  @override
-  State<MainShell> createState() => _MainShellState();
-}
-
-class _MainShellState extends State<MainShell> {
-  int _selectedIndex = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    ApiService.testConnection();
-  }
-
-  static const List<Widget> _pages = [
-    DashboardPage(),
-    ProdukPage(),
-    KeranjangPage(),
-    TransaksiPage(),
-    ProfilPage(),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: IndexedStack(index: _selectedIndex, children: _pages),
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            boxShadow: [
-              BoxShadow(
-                color: Color(0x14000000),
-                blurRadius: 10,
-                offset: Offset(0, -2),
-              ),
-            ],
-          ),
-        child: ValueListenableBuilder<List<CartItem>>(
-          valueListenable: CartService.cartNotifier,
-          builder: (context, cartItems, _) {
-            final cartCount = CartService.typesCount;
-
-            return BottomNavigationBar(
-              currentIndex: _selectedIndex,
-              onTap: (i) => setState(() => _selectedIndex = i),
-              type: BottomNavigationBarType.fixed,
-              selectedItemColor: const Color(0xFF1E874B),
-              unselectedItemColor: const Color(0xFF6B7280),
-              backgroundColor: Colors.white,
-              selectedLabelStyle: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 11,
-              ),
-              unselectedLabelStyle: const TextStyle(
-                fontWeight: FontWeight.normal,
-                fontSize: 11,
-              ),
-              items: [
-                const BottomNavigationBarItem(
-                  icon: Icon(Icons.bar_chart_rounded, size: 24),
-                  activeIcon: Icon(Icons.bar_chart_rounded, size: 24),
-                  label: 'Dashboard',
-                ),
-                const BottomNavigationBarItem(
-                  icon: Icon(Icons.grid_view_rounded, size: 22),
-                  activeIcon: Icon(Icons.grid_view_rounded, size: 22),
-                  label: 'Produk',
-                ),
-                BottomNavigationBarItem(
-                  icon: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      const Icon(Icons.shopping_cart_outlined, size: 24),
-                      if (cartCount > 0)
-                        Positioned(
-                          right: -6,
-                          top: -4,
-                          child: Container(
-                            padding: const EdgeInsets.all(3),
-                            decoration: const BoxDecoration(
-                              color: Color(0xFFDC2626),
-                              shape: BoxShape.circle,
-                            ),
-                            constraints: const BoxConstraints(
-                              minWidth: 16,
-                              minHeight: 16,
-                            ),
-                            child: Text(
-                              '$cartCount',
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 9.5,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                  activeIcon: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      const Icon(Icons.shopping_cart_rounded, size: 24),
-                      if (cartCount > 0)
-                        Positioned(
-                          right: -6,
-                          top: -4,
-                          child: Container(
-                            padding: const EdgeInsets.all(3),
-                            decoration: const BoxDecoration(
-                              color: Color(0xFFDC2626),
-                              shape: BoxShape.circle,
-                            ),
-                            constraints: const BoxConstraints(
-                              minWidth: 16,
-                              minHeight: 16,
-                            ),
-                            child: Text(
-                              '$cartCount',
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 9.5,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                  label: 'Keranjang',
-                ),
-                const BottomNavigationBarItem(
-                  icon: Icon(Icons.receipt_long_outlined, size: 23),
-                  activeIcon: Icon(Icons.receipt_long_rounded, size: 23),
-                  label: 'Transaksi',
-                ),
-                const BottomNavigationBarItem(
-                  icon: Icon(Icons.person_outline_rounded, size: 24),
-                  activeIcon: Icon(Icons.person_rounded, size: 24),
-                  label: 'Profil',
-                ),
-              ],
-            );
-          },
-        ),
-      ),
-    ),
-  );
-}
 }
 
 // ─────────────────────────────────────────────
@@ -230,6 +38,28 @@ class _DashboardPageState extends State<DashboardPage> {
 
   List<Map<String, dynamic>> _lowStockList = [];
 
+  // Sales Chart & Floating Calendar Filter State
+  final LayerLink _calendarLayerLink = LayerLink();
+  OverlayEntry? _calendarOverlayEntry;
+  bool _isCalendarOpen = false;
+
+  String _selectedPeriodLabel = 'Okt 2024';
+  int _selectedYear = 2024;
+  int _selectedMonthIndex = 9; // 0=Jan..9=Okt
+  int _selectedPointIndex = 4; // Default highlight: 'Jum' (Friday)
+
+  static const List<String> _monthNames = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+    'Jul', 'Ags', 'Sep', 'Okt', 'Nov', 'Des'
+  ];
+
+  // Dynamic chart data per period
+  List<double> _chartFractions = [0.22, 0.35, 0.33, 0.45, 0.68, 0.55, 0.88];
+  List<int> _chartValues = [220000, 350000, 330000, 450000, 680000, 550000, 880000];
+  List<String> _chartDays = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
+  String _chartAvg = 'Rp480rb';
+  String _chartTitle = 'Grafik Penjualan 7 Hari';
+
   @override
   void initState() {
     super.initState();
@@ -240,6 +70,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
   @override
   void dispose() {
+    _closeCalendarPopup();
     _pageController.dispose();
     ApiConfig.baseUrlNotifier.removeListener(_onUrlChanged);
     ApiService.dataChangedNotifier.removeListener(_onDataChanged);
@@ -352,6 +183,401 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
+  void _selectChartPointByX(double dx, double width) {
+    if (_chartFractions.isEmpty) return;
+    final double stepX = width / (_chartFractions.length - 1);
+    final int index =
+        ((dx + stepX / 2) / stepX).floor().clamp(0, _chartFractions.length - 1);
+    if (_selectedPointIndex != index) {
+      setState(() {
+        _selectedPointIndex = index;
+      });
+    }
+  }
+
+  void _selectPeriodOption(String type) {
+    setState(() {
+      if (type == '7 Hari') {
+        _selectedPeriodLabel = '7 Hari';
+        _chartTitle = 'Grafik Penjualan 7 Hari';
+        _chartDays = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
+        _chartFractions = [0.22, 0.35, 0.33, 0.45, 0.68, 0.55, 0.88];
+        _chartValues = [220000, 350000, 330000, 450000, 680000, 550000, 880000];
+        _chartAvg = 'Rp480rb';
+        _selectedPointIndex = 4;
+      } else if (type == '30 Hari') {
+        _selectedPeriodLabel = '30 Hari';
+        _chartTitle = 'Grafik Penjualan 30 Hari';
+        _chartDays = ['Mgg 1', 'Mgg 2', 'Mgg 3', 'Mgg 4'];
+        _chartFractions = [0.40, 0.65, 0.55, 0.82];
+        _chartValues = [2800000, 4500000, 3900000, 5800000];
+        _chartAvg = 'Rp4,2jt';
+        _selectedPointIndex = 3;
+      } else {
+        _selectedYear = 2024;
+        _selectedMonthIndex = 9;
+        _selectedPeriodLabel = 'Okt 2024';
+        _chartTitle = 'Grafik Penjualan Okt 2024';
+        _chartDays = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
+        _chartFractions = [0.22, 0.35, 0.33, 0.45, 0.68, 0.55, 0.88];
+        _chartValues = [220000, 350000, 330000, 450000, 680000, 550000, 880000];
+        _chartAvg = 'Rp480rb';
+        _selectedPointIndex = 4;
+      }
+    });
+    _closeCalendarPopup();
+  }
+
+  void _selectMonth(int monthIndex) {
+    setState(() {
+      _selectedMonthIndex = monthIndex;
+      final mName = _monthNames[monthIndex];
+      _selectedPeriodLabel = '$mName $_selectedYear';
+      _chartTitle = 'Grafik Penjualan $mName $_selectedYear';
+      _chartDays = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
+      if (monthIndex == 8) {
+        _chartFractions = [0.20, 0.30, 0.35, 0.40, 0.58, 0.50, 0.75];
+        _chartValues = [180000, 290000, 310000, 420000, 590000, 510000, 750000];
+        _chartAvg = 'Rp435rb';
+      } else {
+        _chartFractions = [0.25, 0.38, 0.30, 0.48, 0.62, 0.58, 0.80];
+        _chartValues = [250000, 380000, 300000, 480000, 620000, 580000, 800000];
+        _chartAvg = 'Rp487rb';
+      }
+      _selectedPointIndex = 4;
+    });
+    _closeCalendarPopup();
+  }
+
+  Future<void> _pickCustomDateRange() async {
+    _closeCalendarPopup();
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2023, 1, 1),
+      lastDate: DateTime(2027, 12, 31),
+      initialDateRange: DateTimeRange(
+        start: DateTime(2024, 10, 1),
+        end: DateTime(2024, 10, 7),
+      ),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Color(0xFF164E2E),
+              onPrimary: Colors.white,
+              surface: Colors.white,
+              onSurface: Color(0xFF111827),
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null && mounted) {
+      final startStr = '${picked.start.day} ${_monthNames[picked.start.month - 1]}';
+      final endStr = '${picked.end.day} ${_monthNames[picked.end.month - 1]}';
+      setState(() {
+        _selectedPeriodLabel = '$startStr - $endStr';
+        _chartTitle = 'Grafik Penjualan $startStr - $endStr';
+      });
+    }
+  }
+
+  void _openCalendarPopup() {
+    _closeCalendarPopup();
+
+    _calendarOverlayEntry = OverlayEntry(
+      builder: (ctx) {
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: _closeCalendarPopup,
+              ),
+            ),
+            Positioned(
+              child: CompositedTransformFollower(
+                link: _calendarLayerLink,
+                showWhenUnlinked: false,
+                targetAnchor: Alignment.bottomRight,
+                followerAnchor: Alignment.topRight,
+                offset: const Offset(0, 8),
+                child: Material(
+                  color: Colors.transparent,
+                  child: StatefulBuilder(
+                    builder: (context, setPopupState) {
+                      return _buildFloatingCalendarCard(setPopupState);
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    Overlay.of(context).insert(_calendarOverlayEntry!);
+    setState(() {
+      _isCalendarOpen = true;
+    });
+  }
+
+  void _closeCalendarPopup() {
+    if (_calendarOverlayEntry != null) {
+      _calendarOverlayEntry!.remove();
+      _calendarOverlayEntry = null;
+      if (mounted) {
+        setState(() {
+          _isCalendarOpen = false;
+        });
+      }
+    }
+  }
+
+  void _toggleCalendarPopup() {
+    if (_isCalendarOpen) {
+      _closeCalendarPopup();
+    } else {
+      _openCalendarPopup();
+    }
+  }
+
+  Widget _buildFloatingCalendarCard(StateSetter setPopupState) {
+    return Container(
+      width: 295,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x1F000000),
+            blurRadius: 18,
+            offset: Offset(0, 8),
+          ),
+          BoxShadow(
+            color: Color(0x0A000000),
+            blurRadius: 4,
+            offset: Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Flexible(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.calendar_month_rounded,
+                      size: 15,
+                      color: Color(0xFF1E874B),
+                    ),
+                    SizedBox(width: 5),
+                    Flexible(
+                      child: Text(
+                        'Pilih Periode',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF0F172A),
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
+              Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    GestureDetector(
+                      onTap: () {
+                        setPopupState(() {
+                          _selectedYear--;
+                        });
+                      },
+                      child: const Icon(
+                        Icons.chevron_left_rounded,
+                        size: 18,
+                        color: Color(0xFF334155),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: Text(
+                        '$_selectedYear',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF0F172A),
+                        ),
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () {
+                        setPopupState(() {
+                          _selectedYear++;
+                        });
+                      },
+                      child: const Icon(
+                        Icons.chevron_right_rounded,
+                        size: 18,
+                        color: Color(0xFF334155),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              _buildQuickChip('7 Hari'),
+              const SizedBox(width: 6),
+              _buildQuickChip('30 Hari'),
+              const SizedBox(width: 6),
+              _buildQuickChip('Bulan Ini'),
+            ],
+          ),
+          const SizedBox(height: 10),
+          const Divider(color: Color(0xFFF1F5F9), height: 1, thickness: 1),
+          const SizedBox(height: 10),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: 12,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 4,
+              mainAxisSpacing: 6,
+              crossAxisSpacing: 6,
+              childAspectRatio: 1.4,
+            ),
+            itemBuilder: (ctx, idx) {
+              final isSelected = idx == _selectedMonthIndex &&
+                  _selectedPeriodLabel.contains(_monthNames[idx]) &&
+                  _selectedPeriodLabel.contains('$_selectedYear');
+              return GestureDetector(
+                onTap: () => _selectMonth(idx),
+                behavior: HitTestBehavior.opaque,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? const Color(0xFF164E2E)
+                        : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: isSelected
+                          ? const Color(0xFF164E2E)
+                          : const Color(0xFFE2E8F0),
+                      width: 1,
+                    ),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    _monthNames[idx],
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight:
+                          isSelected ? FontWeight.bold : FontWeight.w500,
+                      color: isSelected
+                          ? Colors.white
+                          : const Color(0xFF334155),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 10),
+          const Divider(color: Color(0xFFF1F5F9), height: 1, thickness: 1),
+          const SizedBox(height: 8),
+          GestureDetector(
+            onTap: _pickCustomDateRange,
+            behavior: HitTestBehavior.opaque,
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.date_range_outlined,
+                  size: 14,
+                  color: Color(0xFF1E874B),
+                ),
+                SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    'Pilih Rentang Tanggal...',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF1E874B),
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuickChip(String label) {
+    final bool isSelected = _selectedPeriodLabel == label ||
+        (label == 'Bulan Ini' && _selectedPeriodLabel.contains('Okt'));
+
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => _selectPeriodOption(label),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? const Color(0xFFE8F5E9)
+                : const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(
+              color: isSelected
+                  ? const Color(0xFF1E874B)
+                  : const Color(0xFFE2E8F0),
+              width: 1,
+            ),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+              color: isSelected
+                  ? const Color(0xFF164E2E)
+                  : const Color(0xFF475569),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final int omzet = (_stats['omzet'] as int?) ?? 0;
@@ -367,7 +593,6 @@ class _DashboardPageState extends State<DashboardPage> {
       backgroundColor: const Color(0xFFF8F9FA),
       appBar: const CustomAppBar(
         title: 'Dashboard',
-        subtitle: 'Toko Anda \u2022 Mode Offline',
       ),
       body: RefreshIndicator(
         color: kGreen,
@@ -377,11 +602,11 @@ class _DashboardPageState extends State<DashboardPage> {
         },
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Greeting Header (matching screenshot)
+              // Greeting Header (pas tepat di bawah title navbar 'Dashboard')
               const Text(
                 'Halo, Selamat Datang!',
                 style: TextStyle(
@@ -390,24 +615,6 @@ class _DashboardPageState extends State<DashboardPage> {
                   color: Color(0xFF111827),
                   letterSpacing: -0.3,
                 ),
-              ),
-              const SizedBox(height: 3),
-              const Row(
-                children: [
-                  Text(
-                    'Hari Ini \u2022 Mode Offline ',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Color(0xFF6B7280),
-                      fontWeight: FontWeight.normal,
-                    ),
-                  ),
-                  Icon(
-                    Icons.access_time_filled,
-                    size: 14,
-                    color: Color(0xFF9CA3AF),
-                  ),
-                ],
               ),
               const SizedBox(height: 16),
 
@@ -564,74 +771,142 @@ class _DashboardPageState extends State<DashboardPage> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
-                          'Grafik Penjualan 7 Hari',
-                          style: TextStyle(
+                        Text(
+                          _chartTitle,
+                          style: const TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 16,
                             color: Color(0xFF111827),
                           ),
                         ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 5,
-                          ),
-                          decoration: BoxDecoration(
-                            border: Border.all(color: const Color(0xFFE5E7EB)),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Row(
-                            children: [
-                              Icon(
-                                Icons.calendar_month,
-                                size: 14,
-                                color: Color(0xFF1E874B),
+                        CompositedTransformTarget(
+                          link: _calendarLayerLink,
+                          child: GestureDetector(
+                            onTap: _toggleCalendarPopup,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 5,
                               ),
-                              SizedBox(width: 4),
-                              Text(
-                                'Okt 2024',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF111827),
+                              decoration: BoxDecoration(
+                                color: _isCalendarOpen
+                                    ? const Color(0xFFF1F5F9)
+                                    : Colors.white,
+                                border: Border.all(
+                                  color: _isCalendarOpen
+                                      ? const Color(0xFF164E2E)
+                                      : const Color(0xFFE5E7EB),
+                                  width: _isCalendarOpen ? 1.5 : 1.0,
                                 ),
+                                borderRadius: BorderRadius.circular(8),
                               ),
-                              SizedBox(width: 2),
-                              Icon(
-                                Icons.keyboard_arrow_down,
-                                size: 16,
-                                color: Color(0xFF4B5563),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(
+                                    Icons.calendar_month,
+                                    size: 14,
+                                    color: Color(0xFF1E874B),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    _selectedPeriodLabel,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF111827),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 2),
+                                  Icon(
+                                    _isCalendarOpen
+                                        ? Icons.keyboard_arrow_up
+                                        : Icons.keyboard_arrow_down,
+                                    size: 16,
+                                    color: const Color(0xFF4B5563),
+                                  ),
+                                ],
                               ),
-                            ],
+                            ),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 18),
-                    SizedBox(
-                      height: 110,
-                      width: double.infinity,
-                      child: CustomPaint(painter: _SalesChartPainter()),
+                    const SizedBox(height: 14),
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        return GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTapDown: (details) {
+                            _selectChartPointByX(
+                              details.localPosition.dx,
+                              constraints.maxWidth,
+                            );
+                          },
+                          onPanUpdate: (details) {
+                            _selectChartPointByX(
+                              details.localPosition.dx,
+                              constraints.maxWidth,
+                            );
+                          },
+                          child: SizedBox(
+                            height: 125,
+                            width: double.infinity,
+                            child: CustomPaint(
+                              painter: _SalesChartPainter(
+                                data: _chartFractions,
+                                values: _chartValues,
+                                selectedIndex: _selectedPointIndex,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
                     ),
                     const SizedBox(height: 8),
-                    const Row(
+                    Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        _DayLabel('Sen'),
-                        _DayLabel('Sel'),
-                        _DayLabel('Rab'),
-                        _DayLabel('Kam'),
-                        _DayLabel('Jum'),
-                        _DayLabel('Sab'),
-                        _DayLabel('Min'),
-                      ],
+                      children: List.generate(_chartDays.length, (idx) {
+                        final isSelected = idx == _selectedPointIndex;
+                        return GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _selectedPointIndex = idx;
+                            });
+                          },
+                          behavior: HitTestBehavior.opaque,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: isSelected
+                                ? BoxDecoration(
+                                    color: const Color(0xFFE8F5E9),
+                                    borderRadius: BorderRadius.circular(4),
+                                  )
+                                : null,
+                            child: Text(
+                              _chartDays[idx],
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: isSelected
+                                    ? FontWeight.bold
+                                    : FontWeight.w500,
+                                color: isSelected
+                                    ? const Color(0xFF1E874B)
+                                    : const Color(0xFF4B5563),
+                              ),
+                            ),
+                          ),
+                        );
+                      }),
                     ),
                     const SizedBox(height: 14),
-                    const Row(
+                    Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Row(
+                        const Row(
                           children: [
                             CircleAvatar(
                               radius: 4.5,
@@ -648,8 +923,8 @@ class _DashboardPageState extends State<DashboardPage> {
                           ],
                         ),
                         Text(
-                          'Rata-rata: Rp480rb',
-                          style: TextStyle(
+                          'Rata-rata: $_chartAvg',
+                          style: const TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w500,
                             color: Color(0xFF4B5563),
@@ -884,47 +1159,42 @@ class _MetricItem extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────
-// DAY LABEL
-// ─────────────────────────────────────────────
-class _DayLabel extends StatelessWidget {
-  final String day;
-  const _DayLabel(this.day);
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      day,
-      style: const TextStyle(
-        fontSize: 11.5,
-        fontWeight: FontWeight.w500,
-        color: Color(0xFF4B5563),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────
-// SALES CHART PAINTER (Curve matching screenshot)
+// SALES CHART PAINTER (Curve with Floating Value Tooltip)
 // ─────────────────────────────────────────────
 class _SalesChartPainter extends CustomPainter {
+  final List<double> data;
+  final List<int> values;
+  final int selectedIndex;
+
+  _SalesChartPainter({
+    required this.data,
+    required this.values,
+    required this.selectedIndex,
+  });
+
   @override
   void paint(Canvas canvas, Size size) {
-    // 7 data points corresponding to 7 days
-    final List<double> data = [0.22, 0.35, 0.33, 0.45, 0.68, 0.55, 0.88];
+    if (data.isEmpty) return;
+
+    // Headroom at top for the floating value tooltip
+    const double topPadding = 30.0;
+    const double bottomPadding = 8.0;
+    final double usableHeight = size.height - topPadding - bottomPadding;
+
     final double stepX = size.width / (data.length - 1);
     final List<Offset> points = List.generate(
       data.length,
-      (i) => Offset(i * stepX, size.height - (data[i] * (size.height - 18) + 8)),
+      (i) => Offset(
+        i * stepX,
+        topPadding + usableHeight - (data[i] * (usableHeight - 10) + 5),
+      ),
     );
 
     // Gradient fill under the curve
     final fillPath = Path()..moveTo(points.first.dx, size.height);
     for (int i = 0; i < points.length - 1; i++) {
       final cp1 = Offset((points[i].dx + points[i + 1].dx) / 2, points[i].dy);
-      final cp2 = Offset(
-        (points[i].dx + points[i + 1].dx) / 2,
-        points[i + 1].dy,
-      );
+      final cp2 = Offset((points[i].dx + points[i + 1].dx) / 2, points[i + 1].dy);
       fillPath.cubicTo(
         cp1.dx,
         cp1.dy,
@@ -945,7 +1215,7 @@ class _SalesChartPainter extends CustomPainter {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            const Color(0xFF81C784).withValues(alpha: 0.4),
+            const Color(0xFF81C784).withValues(alpha: 0.38),
             const Color(0xFF81C784).withValues(alpha: 0.0),
           ],
         ).createShader(Rect.fromLTWH(0, 0, size.width, size.height)),
@@ -955,10 +1225,7 @@ class _SalesChartPainter extends CustomPainter {
     final linePath = Path()..moveTo(points.first.dx, points.first.dy);
     for (int i = 0; i < points.length - 1; i++) {
       final cp1 = Offset((points[i].dx + points[i + 1].dx) / 2, points[i].dy);
-      final cp2 = Offset(
-        (points[i].dx + points[i + 1].dx) / 2,
-        points[i + 1].dy,
-      );
+      final cp2 = Offset((points[i].dx + points[i + 1].dx) / 2, points[i + 1].dy);
       linePath.cubicTo(
         cp1.dx,
         cp1.dy,
@@ -977,14 +1244,151 @@ class _SalesChartPainter extends CustomPainter {
         ..strokeCap = StrokeCap.round,
     );
 
-    // Dots on points (Green dots)
-    for (final p in points) {
-      canvas.drawCircle(p, 4.2, Paint()..color = const Color(0xFF1E874B));
-      canvas.drawCircle(p, 2.0, Paint()..color = Colors.white);
+    // Dotted vertical guideline for the active selected point
+    if (selectedIndex >= 0 && selectedIndex < points.length) {
+      final selectedPoint = points[selectedIndex];
+      final guidePaint = Paint()
+        ..color = const Color(0xFF1E874B).withValues(alpha: 0.30)
+        ..strokeWidth = 1.2
+        ..style = PaintingStyle.stroke;
+
+      const double dashHeight = 3.5;
+      const double dashSpace = 3.0;
+      double startY = selectedPoint.dy + 8;
+      while (startY < size.height) {
+        canvas.drawLine(
+          Offset(selectedPoint.dx, startY),
+          Offset(selectedPoint.dx, (startY + dashHeight).clamp(0, size.height)),
+          guidePaint,
+        );
+        startY += dashHeight + dashSpace;
+      }
+    }
+
+    // Dots on points
+    for (int i = 0; i < points.length; i++) {
+      final p = points[i];
+      final isSelected = i == selectedIndex;
+
+      if (isSelected) {
+        // Outer halo glow
+        canvas.drawCircle(
+          p,
+          8.5,
+          Paint()..color = const Color(0xFF1E874B).withValues(alpha: 0.22),
+        );
+        // Outer green dot ring
+        canvas.drawCircle(
+          p,
+          5.5,
+          Paint()..color = const Color(0xFF1E874B),
+        );
+        // Inner white dot
+        canvas.drawCircle(
+          p,
+          2.6,
+          Paint()..color = Colors.white,
+        );
+      } else {
+        canvas.drawCircle(p, 4.2, Paint()..color = const Color(0xFF1E874B));
+        canvas.drawCircle(p, 2.0, Paint()..color = Colors.white);
+      }
+    }
+
+    // FLOATING VALUE TOOLTIP (Pill with pointer arrow & shadow)
+    if (selectedIndex >= 0 && selectedIndex < points.length) {
+      final selectedPoint = points[selectedIndex];
+      final int value =
+          selectedIndex < values.length ? values[selectedIndex] : 0;
+      final String valueText = _formatValue(value);
+
+      final TextPainter tp = TextPainter(
+        text: TextSpan(
+          text: valueText,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.2,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+
+      const double hPadding = 8.0;
+      const double vPadding = 4.0;
+      final double tooltipWidth = tp.width + (hPadding * 2);
+      final double tooltipHeight = tp.height + (vPadding * 2);
+      const double arrowHeight = 4.5;
+      const double arrowWidth = 7.0;
+      const double gap = 4.0;
+
+      // Clamp center X so tooltip does not clip left or right
+      final double minCenterX = tooltipWidth / 2 + 2;
+      final double maxCenterX = size.width - (tooltipWidth / 2) - 2;
+      final double tooltipCenterX =
+          selectedPoint.dx.clamp(minCenterX, maxCenterX);
+
+      final double tooltipLeft = tooltipCenterX - (tooltipWidth / 2);
+      final double tooltipTop =
+          (selectedPoint.dy - gap - arrowHeight - tooltipHeight).clamp(0.0, size.height);
+
+      final RRect tooltipRRect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(tooltipLeft, tooltipTop, tooltipWidth, tooltipHeight),
+        const Radius.circular(6),
+      );
+
+      final double arrowTipX =
+          selectedPoint.dx.clamp(tooltipLeft + 6, tooltipLeft + tooltipWidth - 6);
+      final double arrowBaseY = tooltipTop + tooltipHeight;
+      final Path arrowPath = Path()
+        ..moveTo(arrowTipX - arrowWidth / 2, arrowBaseY)
+        ..lineTo(arrowTipX, arrowBaseY + arrowHeight)
+        ..lineTo(arrowTipX + arrowWidth / 2, arrowBaseY)
+        ..close();
+
+      final Path combinedPath = Path()
+        ..addRRect(tooltipRRect)
+        ..addPath(arrowPath, Offset.zero);
+
+      // Draw soft shadow
+      canvas.drawShadow(combinedPath, const Color(0x38000000), 4, false);
+
+      // Draw floating dark slate pill
+      final Paint pillPaint = Paint()
+        ..color = const Color(0xFF0F172A)
+        ..style = PaintingStyle.fill;
+      canvas.drawRRect(tooltipRRect, pillPaint);
+      canvas.drawPath(arrowPath, pillPaint);
+
+      // Draw text centered
+      tp.paint(
+        canvas,
+        Offset(
+          tooltipLeft + hPadding,
+          tooltipTop + vPadding,
+        ),
+      );
     }
   }
 
+  static String _formatValue(int v) {
+    String s = v.toString();
+    String r = '';
+    int c = 0;
+    for (int i = s.length - 1; i >= 0; i--) {
+      if (c > 0 && c % 3 == 0) r = '.$r';
+      r = s[i] + r;
+      c++;
+    }
+    return 'Rp$r';
+  }
+
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _SalesChartPainter oldDelegate) {
+    return oldDelegate.selectedIndex != selectedIndex ||
+        oldDelegate.data != data ||
+        oldDelegate.values != values;
+  }
 }
 

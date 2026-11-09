@@ -13,6 +13,7 @@ class ProdukPage extends StatefulWidget {
 
 class _ProdukPageState extends State<ProdukPage> {
   static const Color kGreen = Color(0xFF1E874B);
+  final TextEditingController _searchCtrl = TextEditingController();
   String _searchQuery = '';
   bool _isLoading = true;
   List<Map<String, dynamic>> _products = [];
@@ -27,6 +28,7 @@ class _ProdukPageState extends State<ProdukPage> {
 
   @override
   void dispose() {
+    _searchCtrl.dispose();
     ApiConfig.baseUrlNotifier.removeListener(_onUrlChanged);
     ApiService.dataChangedNotifier.removeListener(_onDataChanged);
     super.dispose();
@@ -221,16 +223,14 @@ class _ProdukPageState extends State<ProdukPage> {
       backgroundColor: const Color(0xFFF8F9FA),
       appBar: CustomAppBar(
         title: 'Produk',
-        subtitle: 'Toko Anda \u2022 Mode Offline',
-        onSearchPressed: () {},
-        onNotificationPressed: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Tidak ada notifikasi baru'),
-              behavior: SnackBarBehavior.floating,
-              duration: Duration(seconds: 1),
-            ),
-          );
+        searchController: _searchCtrl,
+        searchHint: 'Cari nama produk atau barcode...',
+        onSearchChanged: (v) => setState(() => _searchQuery = v),
+        onSearchClosed: () {
+          setState(() {
+            _searchQuery = '';
+            _searchCtrl.clear();
+          });
         },
       ),
       body: RefreshIndicator(
@@ -390,6 +390,7 @@ class _ProdukPageState extends State<ProdukPage> {
                   border: Border.all(color: const Color(0xFFE5E7EB), width: 1.2),
                 ),
                 child: TextField(
+                  controller: _searchCtrl,
                   onChanged: (v) => setState(() => _searchQuery = v),
                   decoration: const InputDecoration(
                     hintText: 'Cari nama produk atau barcode',

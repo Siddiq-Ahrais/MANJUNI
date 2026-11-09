@@ -156,17 +156,12 @@ class _KeranjangPageState extends State<KeranjangPage> {
       valueListenable: CartService.cartNotifier,
       builder: (context, cartItems, _) {
         final totalCount = CartService.totalCount;
-        final typesCount = CartService.typesCount;
         final subtotal = CartService.subtotal;
 
         return Scaffold(
           backgroundColor: const Color(0xFFF8F9FA),
-          appBar: CustomAppBar(
+          appBar: const CustomAppBar(
             title: 'Keranjang',
-            subtitle:
-                '$typesCount jenis \u2022 $totalCount item \u2022 Mode Offline',
-            onSearchPressed: () {},
-            onNotificationPressed: () {},
           ),
           body: SingleChildScrollView(
             padding: const EdgeInsets.all(16),

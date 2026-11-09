@@ -315,11 +315,8 @@ class _ProfilPageState extends State<ProfilPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
-      appBar: CustomAppBar(
+      appBar: const CustomAppBar(
         title: 'Profil',
-        subtitle: 'Warung Maju Jaya \u2022 Mode Offline',
-        onSearchPressed: () {},
-        onNotificationPressed: () {},
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
