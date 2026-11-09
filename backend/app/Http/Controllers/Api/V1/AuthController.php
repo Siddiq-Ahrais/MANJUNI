@@ -75,4 +75,31 @@ class AuthController extends Controller
 
         return response()->json(['message' => 'Logout berhasil.']);
     }
+
+    public function profile(Request $request)
+    {
+        return response()->json([
+            'user' => $request->user()->load('business'),
+        ]);
+    }
+
+    public function updatePassword(Request $request)
+    {
+        $data = $request->validate([
+            'current_password' => ['required', 'string'],
+            'new_password' => ['required', 'string', 'min:8', 'confirmed'],
+        ]);
+
+        $user = $request->user();
+
+        if (! Hash::check($data['current_password'], $user->password)) {
+            return response()->json(['message' => 'Kata sandi saat ini tidak cocok.'], 422);
+        }
+
+        $user->update([
+            'password' => $data['new_password'],
+        ]);
+
+        return response()->json(['message' => 'Kata sandi berhasil diperbarui.']);
+    }
 }

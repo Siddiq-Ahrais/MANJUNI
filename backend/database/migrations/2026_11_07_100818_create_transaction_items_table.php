@@ -14,10 +14,11 @@ return new class extends Migration
         Schema::create('transaction_items', function (Blueprint $table) {
             $table->id();
             $table->foreignId('transaction_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('product_id')->constrained()->restrictOnDelete();
-            $table->unsignedInteger('quantity');
+            $table->foreignId('product_id')->nullable()->constrained()->restrictOnDelete();
+            $table->string('item_name')->nullable();
+            $table->unsignedInteger('quantity')->default(1);
             $table->unsignedBigInteger('unit_price');
-            $table->unsignedBigInteger('cost_price');
+            $table->unsignedBigInteger('cost_price')->default(0);
             $table->unsignedBigInteger('subtotal');
             $table->timestamps();
         });

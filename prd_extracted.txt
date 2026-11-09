@@ -1,0 +1,750 @@
+﻿PRD MAJUNIH (Manajemen UMKM Terkini) v1.1
+Nov 7, 2026 · @Ahmad
+1. Informasi Umum
+MAJUNIH versi 1.1 menjadikan scan barcode dan konfirmasi pembayaran sebagai fitur unggulan MVP: stok berkurang otomatis begitu pembayaran dikonfirmasi.
+Nama Produk: MAJUNIH (Manajemen UMKM Terkini)
+Versi: 1.1
+Platform: Aplikasi mobile (Flutter) dengan backend REST API (Laravel)
+Tema: Local MSME & Creative Economy
+Perubahan dari versi 1.0
+Area
+Versi 1.0
+Versi 1.1
+Pencatatan stok
+Input manual
+Scan barcode untuk mencari produk, menjual, dan restock
+Status penjualan
+Langsung tercatat sebagai selesai
+Menunggu pembayaran (pending), lalu selesai setelah pembayaran dikonfirmasi
+Pengurangan stok
+Saat penjualan tercatat
+Saat pembayaran dikonfirmasi
+Pembayaran QRIS
+Tidak ada
+Metode pembayaran QRIS, dikonfirmasi manual oleh kasir tanpa payment gateway
+Database
+Tanpa barcode; status transaksi completed dan void
+products.barcode; status pending dan cancelled; kolom paid_at dan payment_reference
+Pemindaian barcode
+Future Development
+Masuk MVP (P0)
+2. Latar Belakang
+Latar Belakang Masalah
+Hambatan aksesibilitas pada solusi digital yang ada: Mayoritas aplikasi manajemen keuangan dan bisnis saat ini mengunci fitur esensial melalui skema berbayar (premium) dan sering mengganggu kenyamanan pengguna dengan tayangan iklan yang berlebihan. Hal ini menjadi barrier to entry bagi UMKM dengan keterbatasan modal operasional.
+Kebutuhan fungsionalitas inti yang sederhana: Pelaku UMKM membutuhkan sistem digital yang praktis dan tidak terlalu kompleks, dengan fokus utama pada pencatatan riwayat transaksi harian, pengelolaan modal, dan kalkulasi laba bersih maupun laba rugi.
+Inefisiensi visibilitas operasional dan inventaris: UMKM sering kesulitan melacak metrik vital bisnis secara real-time. Diperlukan dasbor terpusat yang memberikan visibilitas langsung terhadap omzet harian, tren penjualan, produk terlaris, serta peringatan dini untuk stok barang yang menipis.
+Pencatatan stok manual yang merepotkan: UMKM umumnya mencatat stok masuk dan keluar dengan tulisan tangan atau mengetik satu per satu. Cara ini lambat, rawan salah, dan membuat stok di catatan berbeda dari stok di rak. Sistem stok gudang berbasis SAP (SAP Logon) yang pernah digunakan penulis di PT Comnet Plus (Iconnet) menjadi acuan alur: stok berkurang otomatis setelah barang dikonfirmasi keluar. MAJUNIH membawa alur itu ke versi ringan untuk UMKM lewat scan barcode di ponsel.
+Urgensi adaptasi di era ekonomi kreatif: Terdapat kebutuhan mendesak untuk menyediakan alat bantu digital yang mendukung digitalisasi operasional UMKM lokal, guna mengoptimalkan manajemen bisnis dan meningkatkan daya saing mereka di pasar.
+Rumusan Masalah
+Bagaimana merancang dan mengembangkan platform manajemen bisnis untuk UMKM yang menyediakan fitur pencatatan esensial secara inklusif tanpa pembatasan akses (premium) dan bebas dari distraksi iklan?
+Bagaimana menyederhanakan alur pencatatan operasional, seperti riwayat transaksi, perencanaan bisnis, dan laporan laba rugi, agar sesuai dengan tingkat literasi digital dan alur kerja harian UMKM?
+Bagaimana mengintegrasikan pemantauan performa bisnis, meliputi omzet harian, grafik penjualan periodik, dan manajemen stok otomatis, ke dalam satu antarmuka dasbor yang mudah dipahami?
+Bagaimana solusi digital ini dapat mempercepat digitalisasi UMKM lokal, mengoptimalkan efisiensi manajemen, dan meningkatkan daya saing mereka di dalam ekosistem ekonomi kreatif?
+Bagaimana mempercepat pencatatan stok dan penjualan lewat scan barcode, serta mengurangi stok otomatis saat pembayaran dikonfirmasi, tanpa integrasi payment gateway?
+3. Tujuan Produk
+Platform ini menghadirkan solusi manajemen operasional yang inklusif dan efisien bagi UMKM. Tujuan spesifiknya:
+Aksesibilitas tanpa batasan (barrier-free): Menyediakan aplikasi pencatatan dan manajemen bisnis yang fitur esensialnya dapat diakses penuh tanpa sistem berbayar (premium) dan bebas dari iklan, sehingga ramah bagi UMKM dengan keterbatasan modal.
+Digitalisasi pencatatan finansial yang sederhana: Memfasilitasi pelaku UMKM dengan rekam jejak keuangan yang praktis untuk mencatat riwayat transaksi harian, mengelola modal, serta menghitung laba bersih dan laba rugi secara akurat.
+Visibilitas operasional dan inventaris terpusat: Menghadirkan dasbor interaktif untuk memantau performa bisnis secara real-time, mencakup omzet harian, total transaksi, grafik tren penjualan, produk terlaris, hingga peringatan dini untuk stok yang menipis.
+Pencatatan stok cepat berbasis scan: Memindai barcode produk untuk mencari produk, mencatat penjualan, dan restock, serta mengurangi stok otomatis saat pembayaran dikonfirmasi, tanpa mengetik data satu per satu.
+Peningkatan daya saing UMKM: Mendorong digitalisasi operasional UMKM lokal untuk mengoptimalkan manajemen bisnis, memperluas perencanaan ke depan, dan menjadikan mereka lebih kompetitif dalam ekosistem ekonomi kreatif.
+4. Target Pengguna
+Primary user: Pemilik UMKM / pelaku usaha mandiri.
+Secondary user:
+Karyawan operasional / kasir UMKM, pengguna harian fitur scan dan konfirmasi pembayaran
+Mitra usaha / pemodal internal
+5. Fitur Utama
+MAJUNIH berfokus pada pencatatan usaha, bukan toko online: tidak ada katalog publik, keranjang belanja online, atau payment gateway. Fitur unggulan versi 1.1 adalah scan barcode dengan konfirmasi pembayaran (5.7). Prioritas P0 wajib ada di MVP, P1 dikerjakan bila waktu cukup.
+5.1 Authentication & Authorization
+Registrasi pemilik UMKM sekaligus pembuatan profil usaha (nama usaha, alamat, nomor telepon). (P0)
+Login dan logout dengan email dan kata sandi; token akses disimpan aman di perangkat. (P0)
+Tiga peran: Pemilik (akses penuh), Kasir (mencatat penjualan, melihat produk dan stok), Mitra (hanya melihat dasbor, laporan, dan ringkasan modal). (P0)
+Pemilik membuat, menonaktifkan, dan mengatur peran akun kasir dan mitra. (P1)
+Reset kata sandi. (P1)
+5.2 Dashboard
+Omzet hari ini dan jumlah transaksi hari ini; hanya transaksi yang sudah lunas yang dihitung. (P0)
+Grafik tren penjualan harian (7 dan 30 hari) dan bulanan. (P0)
+Daftar produk terlaris pada periode terpilih. (P0)
+Peringatan stok menipis untuk produk dengan stok di bawah atau sama dengan batas minimum. (P0)
+Ringkasan laba bersih bulan berjalan. (P1)
+5.3 Management (Produk & Stok)
+CRUD produk: nama, kategori, satuan, barcode, harga modal, harga jual, stok, dan batas minimum stok. (P0)
+Stok berkurang otomatis saat pembayaran penjualan dikonfirmasi dan bertambah saat restock; setiap perubahan tercatat di riwayat stok. (P0)
+Kategori produk. (P1)
+Penyesuaian stok manual (stok opname) dengan catatan alasan. (P1)
+Pencarian dan filter produk. (P1)
+5.4 Transaksi & Riwayat
+Catat penjualan: pilih atau scan satu atau beberapa produk, jumlah, metode pembayaran (tunai, QRIS, transfer, lainnya), tanggal, dan catatan. Penjualan berstatus menunggu pembayaran (pending) sampai dikonfirmasi. (P0)
+Catat pengeluaran operasional (bahan, sewa, listrik dan air, gaji, lainnya). (P0)
+Riwayat transaksi dengan filter tanggal, jenis, status, dan metode pembayaran. (P0)
+Detail transaksi dan pembatalan (void) oleh Pemilik dengan alasan; transaksi tidak dihapus permanen. (P0)
+Catat penjualan dengan nominal langsung tanpa memilih produk, untuk usaha jasa. (P1)
+5.5 Modal & Perencanaan
+Catat modal awal, tambahan modal, dan penarikan modal, termasuk nama pemodal bila ada. (P0)
+Ringkasan total modal masuk dan modal ditarik. (P0)
+Daftar rencana usaha: judul, deskripsi, target tanggal, target nominal (opsional), dan status (Direncanakan, Dikerjakan, Selesai). (P0)
+5.6 Laporan Keuangan
+Laporan laba rugi per periode (harian, mingguan, bulanan, rentang kustom): pendapatan, HPP, laba kotor, biaya operasional, dan laba bersih. (P0)
+Rekap arus kas (uang masuk dan keluar) per periode. (P1)
+5.7 Scan Barcode & Konfirmasi Pembayaran (fitur unggulan v1.1)
+Kamera ponsel membaca barcode produk. Stok berkurang otomatis setelah kasir mengonfirmasi bahwa pembayaran sudah diterima.
+Scan barcode untuk mencari produk. (P0)
+Scan barcode saat penjualan: produk masuk ke keranjang, memindai produk yang sama lagi menambah jumlah. (P0)
+Scan barcode saat restock (barang masuk) dengan mengisi jumlah. (P0)
+Pasang barcode pada produk dengan memindai barcode kemasan atau mengetik manual; barcode unik per usaha. (P0)
+Konfirmasi pembayaran: kasir menandai pembayaran sudah diterima (QRIS, tunai, transfer, atau lainnya). Saat itu status berubah dari pending ke lunas, stok berkurang, dan riwayat stok tercatat dalam satu database transaction. (P0)
+Pembatalan penjualan pending sebelum dibayar; stok dan laporan tidak berubah. (P0)
+Stok opname dengan scan. (P1)
+Nomor referensi pembayaran dari aplikasi merchant (opsional). (P1)
+Pembuatan label barcode untuk produk yang tidak punya barcode pabrik. (P1)
+Batasan pembayaran QRIS. Pelanggan membayar ke QRIS merchant milik pemilik (misalnya dari Shopee atau Dana) di luar MAJUNIH. MAJUNIH tidak membaca status pembayaran secara otomatis, sehingga kasir memeriksa notifikasi di aplikasi merchant lalu menekan Konfirmasi Pembayaran. Pembacaan status otomatis lewat payment gateway masuk Future Development.
+6. User Flow
+Pemilik UMKM
+Mendaftar dan mengisi profil usaha.
+Mencatat modal awal.
+Menambahkan kategori dan produk beserta barcode (scan atau ketik), harga modal, harga jual, stok awal, dan batas minimum stok.
+Membuat akun kasir atau mitra bila dibutuhkan.
+Memindai barcode saat barang masuk untuk menambah stok (restock).
+Memantau dasbor: omzet harian, tren penjualan, produk terlaris, dan peringatan stok menipis.
+Mencatat pengeluaran operasional dan meninjau riwayat transaksi.
+Membuka laporan laba rugi per periode.
+Menyusun dan memperbarui daftar rencana usaha.
+Karyawan / Kasir
+Login dengan akun yang dibuat Pemilik.
+Membuka halaman transaksi baru, memindai barcode produk (atau mencari manual), lalu mengatur jumlah.
+Menekan Bayar dan memilih metode pembayaran; transaksi berstatus menunggu pembayaran dan stok belum berubah.
+Pelanggan membayar. Untuk QRIS, pelanggan membayar ke QRIS merchant milik pemilik dan kasir memeriksa notifikasi di aplikasi merchant.
+Kasir menekan Konfirmasi Pembayaran: transaksi lunas dan stok berkurang otomatis. Peringatan muncul bila stok mencapai batas minimum.
+Bila pelanggan batal sebelum membayar, kasir membatalkan transaksi; stok dan laporan tidak berubah.
+Melihat riwayat transaksi dan stok produk.
+Bila salah input setelah lunas, meminta Pemilik membatalkan transaksi (void).
+Alur scan sampai stok berkurang
+alur kasir: scan sampai stok berkurang · 2 keputusan
+Stok baru berubah saat kasir menekan Konfirmasi Pembayaran; penjualan yang masih pending atau dibatalkan tidak menyentuh stok.
+Mitra Usaha / Pemodal Internal
+Login dengan akun yang dibuat Pemilik.
+Melihat dasbor, laporan laba rugi, dan ringkasan modal (hanya baca).
+7. Functional Requirements
+FR-01 sampai FR-23 berasal dari versi 1.0 (FR-05, FR-07, FR-11, FR-13, dan FR-14 disesuaikan); FR-24 sampai FR-33 baru di versi 1.1.
+ID
+Modul
+Kebutuhan
+Prioritas
+FR-01
+Auth
+Sistem memungkinkan pendaftaran Pemilik dan pembuatan profil usaha.
+P0
+FR-02
+Auth
+Sistem memvalidasi login dan memberikan token akses.
+P0
+FR-03
+Auth
+Sistem membatasi menu dan endpoint sesuai peran (Pemilik, Kasir, Mitra).
+P0
+FR-04
+Auth
+Pemilik dapat membuat dan menonaktifkan akun Kasir dan Mitra.
+P1
+FR-05
+Produk
+Sistem menyediakan CRUD produk dengan barcode, harga modal, harga jual, stok, dan batas minimum stok.
+P0
+FR-06
+Produk
+Sistem menyediakan kategori produk.
+P1
+FR-07
+Stok
+Stok berkurang otomatis saat pembayaran penjualan dikonfirmasi dan bertambah saat restock.
+P0
+FR-08
+Stok
+Sistem mencatat riwayat pergerakan stok per produk.
+P0
+FR-09
+Stok
+Pemilik dapat menyesuaikan stok manual dengan alasan.
+P1
+FR-10
+Stok
+Dasbor menampilkan produk dengan stok di bawah atau sama dengan batas minimum.
+P0
+FR-11
+Transaksi
+Pengguna berwenang dapat mencatat penjualan dengan satu atau lebih produk; penjualan berstatus menunggu pembayaran (pending) sampai dikonfirmasi.
+P0
+FR-12
+Transaksi
+Pemilik dapat mencatat pengeluaran operasional.
+P0
+FR-13
+Transaksi
+Sistem menampilkan riwayat transaksi dengan filter tanggal, jenis, status, dan metode pembayaran.
+P0
+FR-14
+Transaksi
+Pemilik dapat membatalkan (void) transaksi yang sudah lunas dengan alasan; stok dikembalikan otomatis.
+P0
+FR-15
+Transaksi
+Pengguna berwenang dapat mencatat penjualan dengan nominal langsung tanpa produk.
+P1
+FR-16
+Modal
+Pemilik dapat mencatat modal awal, tambahan modal, dan penarikan modal.
+P0
+FR-17
+Perencanaan
+Pemilik dapat membuat, mengubah, dan menghapus rencana usaha beserta statusnya.
+P0
+FR-18
+Dashboard
+Sistem menampilkan omzet dan jumlah transaksi hari ini.
+P0
+FR-19
+Dashboard
+Sistem menampilkan grafik tren penjualan harian dan bulanan.
+P0
+FR-20
+Dashboard
+Sistem menampilkan produk terlaris pada periode terpilih.
+P0
+FR-21
+Laporan
+Sistem menghitung laporan laba rugi per periode.
+P0
+FR-22
+Laporan
+Sistem menampilkan rekap arus kas per periode.
+P1
+FR-23
+Umum
+Seluruh fitur tersedia tanpa paywall dan tanpa iklan.
+P0
+FR-24
+Scan
+Pengguna berwenang dapat memindai barcode lewat kamera untuk mencari produk; bila produk tidak ditemukan, sistem menampilkan pesan yang jelas.
+P0
+FR-25
+Scan
+Pengguna berwenang dapat memindai barcode untuk menambahkan produk ke penjualan; memindai produk yang sama lagi menambah jumlah.
+P0
+FR-26
+Scan
+Pemilik dapat memindai barcode untuk restock dengan mengisi jumlah barang masuk.
+P0
+FR-27
+Scan
+Pemilik dapat memasang barcode pada produk dengan memindai atau mengetik manual; barcode unik per usaha.
+P0
+FR-28
+Pembayaran
+Pengguna berwenang dapat mengonfirmasi pembayaran penjualan pending (QRIS, tunai, transfer, atau lainnya); sistem mengubah status menjadi completed, mengurangi stok, dan mencatat stock_movements dalam satu database transaction.
+P0
+FR-29
+Pembayaran
+Sistem menolak konfirmasi pembayaran bila stok produk tidak mencukupi saat dikonfirmasi.
+P0
+FR-30
+Pembayaran
+Pengguna berwenang dapat membatalkan penjualan pending sebelum dibayar; stok dan laporan tidak berubah.
+P0
+FR-31
+Scan
+Pemilik dapat melakukan stok opname dengan memindai barcode.
+P1
+FR-32
+Pembayaran
+Pengguna berwenang dapat mengisi nomor referensi pembayaran dari aplikasi merchant (opsional).
+P1
+FR-33
+Scan
+Aplikasi dapat membuat label barcode untuk produk yang tidak punya barcode pabrik.
+P1
+8. Non-Functional Requirements
+Angka pada kolom kebutuhan adalah usulan awal dan dapat disesuaikan setelah pengujian.
+Aspek
+Kebutuhan
+Aksesibilitas
+Tanpa iklan dan tanpa fitur esensial yang dikunci berbayar.
+Usability
+Antarmuka berbahasa Indonesia, nominal berformat Rupiah, dan satu penjualan dapat dicatat dalam beberapa ketukan (target: 5 ketukan atau kurang).
+Scan barcode
+Produk masuk ke keranjang segera setelah barcode terbaca (target: kurang dari 2 detik); input barcode manual tersedia bila kamera tidak dapat dipakai.
+Performa
+Operasi CRUD merespons di bawah 1 detik pada jaringan 4G; dasbor termuat di bawah 3 detik.
+Keamanan
+Kata sandi di-hash, komunikasi lewat HTTPS, token akses per perangkat, validasi input di sisi server, dan otorisasi per peran. Izin kamera hanya diminta saat fitur scan dibuka.
+Isolasi data
+Setiap kueri dibatasi business_id; pengguna tidak dapat melihat data usaha lain.
+Integritas data
+Konfirmasi pembayaran (perubahan status, pengurangan stok, dan stock_movements) berjalan dalam satu database transaction.
+Kompatibilitas
+Android sebagai target utama; iOS mengikuti karena basis kode Flutter yang sama (tidak diuji pada MVP). Fitur scan memerlukan kamera.
+Keandalan
+Backup database berkala (target: harian).
+Maintainability
+API berversi (/api/v1) dan terdokumentasi, kode mengikuti konvensi Laravel dan Flutter.
+9. Teknologi yang Digunakan
+MAJUNIH memakai Flutter untuk aplikasi mobile dan Laravel untuk backend REST API. Data bergerak dalam alur berikut:
+Aplikasi Flutter  <-- JSON / HTTPS -->  Laravel REST API  <-->  MySQL
+Layer
+Teknologi
+Keterangan
+Frontend (mobile)
+Flutter (Dart)
+Satu basis kode; Android sebagai target utama.
+Scan barcode (mobile)
+mobile_scanner
+Membaca barcode lewat kamera ponsel.
+Backend
+Laravel (PHP)
+REST API berversi /api/v1, Eloquent ORM, migrasi, dan seeder.
+Autentikasi
+Laravel Sanctum
+Token API per perangkat; otorisasi peran lewat Policy atau middleware.
+Database
+MySQL
+Relasional, cocok untuk data transaksi dan laporan.
+Komunikasi data
+REST API, JSON
+Request divalidasi dengan Form Request Laravel.
+HTTP client (Flutter)
+Dio atau package http
+Menyimpan token dan menangani error API.
+State management (Flutter)
+Provider atau Riverpod
+Dipilih tim saat implementasi.
+Grafik (Flutter)
+fl_chart
+Grafik tren penjualan di dasbor.
+Version control
+Git dan GitHub
+Kolaborasi tim.
+Pengujian API
+Postman
+Koleksi endpoint dibagikan ke tim.
+10. Struktur Database
+Database MySQL berisi 10 tabel. Semua nominal disimpan sebagai bilangan bulat Rupiah (unsignedBigInteger). Setiap tabel memiliki created_at dan updated_at kecuali dinyatakan lain. Perubahan versi 1.1 hanya ada di tabel products dan transactions.
+businesses
+Kolom
+Tipe
+Keterangan
+id
+bigint, PK
+name
+varchar
+Nama usaha
+address
+text, null
+phone
+varchar, null
+users
+Kolom
+Tipe
+Keterangan
+id
+bigint, PK
+business_id
+bigint, FK
+Mengacu ke businesses
+name
+varchar
+email
+varchar, unique
+password
+varchar
+Hash
+role
+enum
+owner, cashier, partner
+is_active
+boolean
+Default true
+categories
+Kolom
+Tipe
+Keterangan
+id
+bigint, PK
+business_id
+bigint, FK
+name
+varchar
+Unik per usaha
+products
+Kolom
+Tipe
+Keterangan
+id
+bigint, PK
+business_id
+bigint, FK
+category_id
+bigint, FK, null
+Mengacu ke categories
+name
+varchar
+barcode
+varchar, null
+Baru di v1.1. Unik per usaha (business_id + barcode); null untuk produk tanpa barcode
+unit
+varchar
+Pcs, porsi, kg, dan sebagainya
+cost_price
+unsigned bigint
+Harga modal per satuan
+selling_price
+unsigned bigint
+Harga jual per satuan
+stock
+int
+Tidak boleh negatif
+min_stock
+int
+Batas peringatan stok menipis
+is_active
+boolean
+Default true
+deleted_at
+timestamp, null
+Soft delete
+transactions (penjualan)
+Kolom
+Tipe
+Keterangan
+id
+bigint, PK
+business_id
+bigint, FK
+user_id
+bigint, FK
+Pencatat transaksi
+transaction_date
+datetime
+Tanggal penjualan; dipakai oleh dasbor dan laporan
+total_amount
+unsigned bigint
+Total penjualan
+payment_method
+enum
+cash, qris, transfer, other (qris baru di v1.1)
+payment_reference
+varchar, null
+Baru di v1.1. Nomor referensi dari aplikasi merchant, opsional
+note
+text, null
+status
+enum
+pending, completed, cancelled, void (pending dan cancelled baru di v1.1)
+paid_at
+datetime, null
+Baru di v1.1. Waktu pembayaran dikonfirmasi; terisi saat status menjadi completed
+void_reason
+text, null
+Wajib bila void
+voided_by
+bigint, FK, null
+Mengacu ke users
+voided_at
+datetime, null
+transaction_items
+Kolom
+Tipe
+Keterangan
+id
+bigint, PK
+transaction_id
+bigint, FK
+product_id
+bigint, FK
+quantity
+int
+Minimal 1
+unit_price
+unsigned bigint
+Salinan harga jual saat transaksi dibuat
+cost_price
+unsigned bigint
+Salinan harga modal saat transaksi dibuat
+subtotal
+unsigned bigint
+quantity x unit_price
+expenses (pengeluaran operasional)
+Kolom
+Tipe
+Keterangan
+id
+bigint, PK
+business_id
+bigint, FK
+user_id
+bigint, FK
+Pencatat
+expense_date
+date
+category
+varchar
+Bahan baku, sewa, listrik dan air, gaji, lainnya
+amount
+unsigned bigint
+note
+text, null
+status
+enum
+completed, void
+void_reason
+text, null
+capital_entries (modal)
+Kolom
+Tipe
+Keterangan
+id
+bigint, PK
+business_id
+bigint, FK
+user_id
+bigint, FK
+Pencatat
+entry_date
+date
+type
+enum
+initial, addition, withdrawal
+amount
+unsigned bigint
+source_name
+varchar, null
+Nama pemodal atau mitra
+note
+text, null
+stock_movements
+Kolom
+Tipe
+Keterangan
+id
+bigint, PK
+product_id
+bigint, FK
+user_id
+bigint, FK
+transaction_item_id
+bigint, FK, null
+Terisi untuk sale dan void_return
+type
+enum
+sale, restock, adjustment, void_return. Pergerakan sale dicatat saat pembayaran dikonfirmasi, bukan saat transaksi pending dibuat
+quantity_change
+int
+Bertanda: negatif untuk stok keluar
+stock_after
+int
+Stok setelah perubahan
+note
+text, null
+plans (rencana usaha)
+Kolom
+Tipe
+Keterangan
+id
+bigint, PK
+business_id
+bigint, FK
+user_id
+bigint, FK
+Pembuat
+title
+varchar
+description
+text, null
+due_date
+date, null
+target_amount
+unsigned bigint, null
+status
+enum
+planned, in_progress, done
+11. ERD (Entity Relationship Diagram)
+Versi 1.1 tidak menambah relasi baru; kolom barcode berada di tabel products.
+11.1 Relasi Antar Entitas
+Satu business memiliki banyak user, kategori, produk, transaksi, pengeluaran, entri modal, dan rencana.
+Satu user mencatat banyak transaksi, pengeluaran, entri modal, pergerakan stok, dan rencana.
+Satu category berisi banyak produk; produk boleh tanpa kategori.
+Satu transaction memiliki banyak transaction_items; satu product muncul di banyak transaction_items.
+Satu product memiliki banyak stock_movements; satu transaction_item dapat memicu stock_movements (penjualan saat pembayaran dikonfirmasi, dan pengembalian saat void).
+11.2 ERD Diagram (Text Representation)
+businesses 1 ──< usersbusinesses 1 ──< categoriesbusinesses 1 ──< productsbusinesses 1 ──< transactionsbusinesses 1 ──< expensesbusinesses 1 ──< capital_entriesbusinesses 1 ──< planscategories 1 ──< productsusers 1 ──< transactions      (user_id, voided_by)users 1 ──< expensesusers 1 ──< capital_entriesusers 1 ──< stock_movementsusers 1 ──< planstransactions 1 ──< transaction_itemsproducts     1 ──< transaction_itemsproducts     1 ──< stock_movementstransaction_items 1 ──< stock_movements
+Simbol 1 ──< berarti satu ke banyak (one to many).
+11.3 Ringkasan Relasi
+Entitas induk
+Relasi
+Entitas anak
+Foreign key
+businesses
+1 : N
+users
+users.business_id
+businesses
+1 : N
+categories
+categories.business_id
+businesses
+1 : N
+products
+products.business_id
+businesses
+1 : N
+transactions
+transactions.business_id
+businesses
+1 : N
+expenses
+expenses.business_id
+businesses
+1 : N
+capital_entries
+capital_entries.business_id
+businesses
+1 : N
+plans
+plans.business_id
+categories
+1 : N
+products
+products.category_id
+users
+1 : N
+transactions
+transactions.user_id, transactions.voided_by
+users
+1 : N
+expenses
+expenses.user_id
+users
+1 : N
+capital_entries
+capital_entries.user_id
+users
+1 : N
+stock_movements
+stock_movements.user_id
+users
+1 : N
+plans
+plans.user_id
+transactions
+1 : N
+transaction_items
+transaction_items.transaction_id
+products
+1 : N
+transaction_items
+transaction_items.product_id
+products
+1 : N
+stock_movements
+stock_movements.product_id
+transaction_items
+1 : N
+stock_movements
+stock_movements.transaction_item_id
+12. Rules & Constraints
+Hak akses per peran
+Aksi
+Pemilik
+Kasir
+Mitra
+Kelola produk, kategori, dan stok (termasuk restock)
+Ya
+Lihat saja
+Tidak
+Scan barcode untuk mencari produk
+Ya
+Ya
+Tidak
+Scan barcode untuk restock
+Ya
+Tidak
+Tidak
+Catat penjualan dan konfirmasi pembayaran
+Ya
+Ya
+Tidak
+Batalkan penjualan yang belum dibayar (pending)
+Ya
+Ya
+Tidak
+Void transaksi yang sudah lunas
+Ya
+Tidak
+Tidak
+Catat pengeluaran
+Ya
+Tidak
+Tidak
+Catat modal dan kelola rencana
+Ya
+Tidak
+Tidak
+Lihat dasbor dan laporan
+Ya
+Tidak
+Ya
+Kelola akun pengguna
+Ya
+Tidak
+Tidak
+Aturan data dan bisnis
+Semua data milik satu usaha; setiap kueri difilter business_id, dan satu akun hanya milik satu usaha.
+Setiap usaha memiliki tepat satu Pemilik pada versi 1.0 dan 1.1.
+Harga dan nominal tidak boleh negatif; jumlah item minimal 1; nominal berupa bilangan bulat Rupiah.
+Penjualan berstatus pending tidak mengubah stok, dasbor, maupun laporan. Stok berkurang hanya saat pembayaran dikonfirmasi.
+Konfirmasi pembayaran (status menjadi completed, paid_at terisi, pengurangan stok, dan stock_movements) berjalan atomik dalam satu database transaction.
+Stok tidak boleh negatif; konfirmasi pembayaran ditolak bila jumlah melebihi stok saat dikonfirmasi.
+Penjualan pending yang dibatalkan berstatus cancelled dan tidak mengubah stok maupun laporan.
+Barcode unik per usaha; produk tanpa barcode tetap dapat dijual lewat pencarian manual.
+QRIS dibayar lewat aplikasi merchant di luar MAJUNIH; konfirmasi pembayaran dilakukan manual oleh Kasir atau Pemilik.
+Harga jual dan harga modal disalin ke transaction_items saat transaksi dibuat, sehingga perubahan harga produk tidak mengubah riwayat.
+Transaksi dan pengeluaran tidak dihapus permanen; hanya dapat di-void oleh Pemilik dengan alasan. Void transaksi lunas mengembalikan stok (stock_movements bertipe void_return) dan mengeluarkan data itu dari laporan.
+Produk yang pernah terjual tidak dihapus permanen, hanya dinonaktifkan (soft delete).
+Tanggal transaksi, pengeluaran, dan modal tidak boleh di masa depan.
+Stok dianggap menipis bila stock kurang dari atau sama dengan min_stock.
+Produk terlaris dihitung dari total quantity pada transaksi berstatus completed dalam periode terpilih.
+Tambahan dan penarikan modal tidak dihitung sebagai pendapatan atau biaya pada laporan laba rugi.
+Tidak ada iklan dan tidak ada fitur yang dikunci berbayar.
+Rumus laporan laba rugi
+\text{Laba Bersih} = \sum \text{Penjualan} - \sum (\text{Qty} \times \text{Harga Modal}) - \sum \text{Biaya Operasional}
+Penjualan dan biaya operasional hanya menghitung data berstatus completed. Selisih penjualan dan HPP (jumlah Qty × Harga Modal) adalah laba kotor.
+13. Future Development
+Pemindaian barcode sudah pindah dari daftar ini ke MVP (bagian 5.7).
+Integrasi pembayaran otomatis: status QRIS dibaca lewat webhook payment gateway (misalnya Midtrans atau Xendit), sehingga pengurangan stok terjadi tanpa konfirmasi manual kasir.
+Mode offline dengan sinkronisasi otomatis saat koneksi kembali.
+Ekspor laporan ke PDF dan Excel, serta cetak atau bagikan nota.
+Notifikasi push untuk stok menipis dan ringkasan harian.
+Pencatatan hutang dan piutang.
+Dukungan beberapa cabang dan beberapa pemilik.
+Pencatatan kanal penjualan (misalnya toko online) sebagai ekstensi dari riwayat transaksi.
+Prediksi penjualan dan rekomendasi restock berbasis riwayat.
+Versi iOS dan versi web untuk Pemilik.
+14. Catatan Tambahan
+Lingkup: MAJUNIH adalah alat pencatatan UMKM (riwayat transaksi, modal, laba rugi, stok). Kebutuhan khas toko online seperti katalog, ongkos kirim, dan integrasi marketplace berada di luar versi 1.0 dan 1.1.
+Prioritas MVP: Kerjakan seluruh item P0 lebih dulu karena lingkup perlu tetap kecil; item P1 hanya bila waktu tersisa. Alur scan, konfirmasi pembayaran, dan stok berkurang otomatis harus berjalan penuh sebelum fitur P0 lain dipoles, karena itu inti demo.
+Penyesuaian template: Bagian awal template berisi sisa dokumen LMS (Module & Lesson, Enrollment, Progress Tracking, Student dan Instructor). Bagian itu diganti menjadi Transaksi, Modal & Perencanaan, Laporan, serta peran Pemilik, Kasir, dan Mitra.
+Asumsi: Database MySQL, mata uang Rupiah saja, satu usaha per akun, angka pada Non-Functional Requirements berupa target usulan, dan pembayaran QRIS terjadi di aplikasi merchant di luar MAJUNIH.
+Pertanyaan terbuka: Sumber keberlanjutan biaya karena aplikasi tanpa iklan dan tanpa premium; apakah Mitra memerlukan akun sendiri atau cukup laporan yang dibagikan; tempat hosting backend; dan apakah kasir perlu mengisi nomor referensi pembayaran QRIS agar mudah dicocokkan dengan aplikasi merchant.
+Usulan rencana pengerjaan 7 hari
+Hari
+Fokus
+1
+Finalisasi PRD, migrasi database, auth dan peran, seeder data demo
+2-3
+CRUD produk dengan barcode, restock, dan riwayat stok di backend
+3-4
+Transaksi dengan scan dan konfirmasi pembayaran dalam satu database transaction
+4-5
+Dasbor (omzet, grafik, stok menipis) dan laporan laba rugi
+6
+Modal, rencana usaha, dan perapian UI; pangkas bila waktu tidak cukup
+7
+Testing, perbaikan bug, slide, dan latihan demo
