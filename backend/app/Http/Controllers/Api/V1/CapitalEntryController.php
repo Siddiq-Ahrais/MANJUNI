@@ -28,18 +28,29 @@ class CapitalEntryController extends Controller
         return response()->json([
             'summary' => [
                 'initial_capital'    => $initial,
+                'total_initial'      => $initial,
                 'additional_capital' => $addition,
+                'total_addition'     => $addition,
+                'total_in'           => $initial + $addition,
                 'total_withdrawal'   => $withdrawal,
                 'current_capital'    => $currentCapital,
+                'net_capital'        => $currentCapital,
             ],
             'entries' => $entries,
         ]);
     }
 
+    public function show(Request $request, CapitalEntry $capitalEntry)
+    {
+        abort_unless($capitalEntry->business_id === $request->user()->business_id, 404);
+
+        return response()->json($capitalEntry->load('user:id,name'));
+    }
+
     public function store(Request $request)
     {
         $data = $request->validate([
-            'entry_date'  => ['required', 'date'],
+            'entry_date'  => ['nullable', 'date'],
             'type'        => ['required', 'in:initial,addition,withdrawal'],
             'amount'      => ['required', 'integer', 'min:1'],
             'source_name' => ['nullable', 'string', 'max:100'],
@@ -49,7 +60,7 @@ class CapitalEntryController extends Controller
         $entry = CapitalEntry::create([
             'business_id' => $request->user()->business_id,
             'user_id'     => $request->user()->id,
-            'entry_date'  => $data['entry_date'],
+            'entry_date'  => $data['entry_date'] ?? now()->toDateString(),
             'type'        => $data['type'],
             'amount'      => $data['amount'],
             'source_name' => $data['source_name'] ?? null,

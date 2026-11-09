@@ -49,7 +49,7 @@ class ProductCrudTest extends TestCase
         ]);
 
         $this->assertDatabaseHas('stock_movements', [
-            'type' => 'adjustment',
+            'type' => 'restock',
             'quantity_change' => 50,
             'stock_after' => 50,
         ]);

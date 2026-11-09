@@ -27,6 +27,9 @@ class ProductController extends Controller
                         ->orWhere('barcode', $search);
                 });
             })
+            ->when($request->boolean('low_stock'), function ($query) {
+                $query->whereColumn('stock', '<=', 'min_stock');
+            })
             ->when(! ($request->user()->role === 'owner' && $request->boolean('include_inactive')), function ($query) {
                 $query->where('is_active', true);
             })
@@ -50,7 +53,13 @@ class ProductController extends Controller
             ->where('barcode', $barcode)
             ->where('is_active', true)
             ->with('category')
-            ->firstOrFail();
+            ->first();
+
+        if (! $product) {
+            return response()->json([
+                'message' => 'Produk dengan barcode tersebut tidak ditemukan.',
+            ], 404);
+        }
 
         return response()->json($product);
     }
@@ -99,7 +108,7 @@ class ProductController extends Controller
                 StockMovement::create([
                     'product_id' => $product->id,
                     'user_id' => $request->user()->id,
-                    'type' => 'adjustment',
+                    'type' => 'restock',
                     'quantity_change' => $initialStock,
                     'stock_after' => $initialStock,
                     'note' => 'Stok awal produk baru',
@@ -153,9 +162,118 @@ class ProductController extends Controller
         return response()->json(['message' => 'Produk berhasil dihapus.']);
     }
 
+    public function restock(Request $request, Product $product)
+    {
+        abort_unless($product->business_id === $request->user()->business_id, 404);
+
+        $data = $request->validate([
+            'quantity' => ['required', 'integer', 'min:1'],
+            'note' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $product = DB::transaction(function () use ($product, $data, $request) {
+            $lockedProduct = Product::whereKey($product->id)->lockForUpdate()->firstOrFail();
+            $lockedProduct->stock += $data['quantity'];
+            $lockedProduct->save();
+
+            StockMovement::create([
+                'product_id' => $lockedProduct->id,
+                'user_id' => $request->user()->id,
+                'type' => 'restock',
+                'quantity_change' => $data['quantity'],
+                'stock_after' => $lockedProduct->stock,
+                'note' => $data['note'] ?? 'Restock barang masuk',
+            ]);
+
+            return $lockedProduct;
+        });
+
+        return response()->json([
+            'message' => 'Restock berhasil.',
+            'product' => $product->load('category'),
+        ]);
+    }
+
+    public function restockByBarcode(Request $request)
+    {
+        $data = $request->validate([
+            'barcode' => ['required', 'string'],
+            'quantity' => ['required', 'integer', 'min:1'],
+            'note' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $product = Product::where('business_id', $request->user()->business_id)
+            ->where('barcode', $data['barcode'])
+            ->where('is_active', true)
+            ->first();
+
+        if (! $product) {
+            return response()->json([
+                'message' => 'Produk dengan barcode tersebut tidak ditemukan.',
+            ], 404);
+        }
+
+        $product = DB::transaction(function () use ($product, $data, $request) {
+            $lockedProduct = Product::whereKey($product->id)->lockForUpdate()->firstOrFail();
+            $lockedProduct->stock += $data['quantity'];
+            $lockedProduct->save();
+
+            StockMovement::create([
+                'product_id' => $lockedProduct->id,
+                'user_id' => $request->user()->id,
+                'type' => 'restock',
+                'quantity_change' => $data['quantity'],
+                'stock_after' => $lockedProduct->stock,
+                'note' => $data['note'] ?? 'Restock lewat scan barcode',
+            ]);
+
+            return $lockedProduct;
+        });
+
+        return response()->json([
+            'message' => 'Restock berhasil.',
+            'product' => $product->load('category'),
+        ]);
+    }
+
     public function adjustStock(Request $request, Product $product)
     {
         abort_unless($product->business_id === $request->user()->business_id, 404);
+
+        if ($request->has('actual_stock')) {
+            $data = $request->validate([
+                'actual_stock' => ['required', 'integer', 'min:0'],
+                'note' => ['required', 'string', 'max:500'],
+            ]);
+
+            $product = DB::transaction(function () use ($product, $data, $request) {
+                $lockedProduct = Product::whereKey($product->id)->lockForUpdate()->firstOrFail();
+                $oldStock = $lockedProduct->stock;
+                $newStock = $data['actual_stock'];
+                $diff = $newStock - $oldStock;
+
+                $lockedProduct->stock = $newStock;
+                $lockedProduct->save();
+
+                if ($diff !== 0) {
+                    StockMovement::create([
+                        'product_id' => $lockedProduct->id,
+                        'user_id' => $request->user()->id,
+                        'type' => 'adjustment',
+                        'quantity_change' => $diff,
+                        'stock_after' => $newStock,
+                        'note' => $data['note'],
+                    ]);
+                }
+
+                return $lockedProduct;
+            });
+
+            return response()->json([
+                'message' => 'Penyesuaian stok (stok opname) berhasil.',
+                'product' => $product->load('category'),
+            ]);
+        }
 
         $data = $request->validate([
             'type' => ['required', 'in:restock,adjustment'],
@@ -206,5 +324,17 @@ class ProductController extends Controller
             'message' => 'Stok berhasil diperbarui.',
             'product' => $product,
         ]);
+    }
+
+    public function stockMovements(Request $request, Product $product)
+    {
+        abort_unless($product->business_id === $request->user()->business_id, 404);
+
+        $movements = StockMovement::where('product_id', $product->id)
+            ->with(['user:id,name,role', 'transactionItem'])
+            ->latest('id')
+            ->paginate($request->integer('per_page', 30));
+
+        return response()->json($movements);
     }
 }

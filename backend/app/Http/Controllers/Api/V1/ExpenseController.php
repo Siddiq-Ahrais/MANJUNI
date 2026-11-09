@@ -33,7 +33,7 @@ class ExpenseController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
-            'expense_date' => ['required', 'date'],
+            'expense_date' => ['nullable', 'date'],
             'category'     => ['required', 'string', 'max:100'],
             'amount'       => ['required', 'integer', 'min:1'],
             'note'         => ['nullable', 'string', 'max:255'],
@@ -42,7 +42,7 @@ class ExpenseController extends Controller
         $expense = Expense::create([
             'business_id'  => $request->user()->business_id,
             'user_id'      => $request->user()->id,
-            'expense_date' => $data['expense_date'],
+            'expense_date' => $data['expense_date'] ?? now()->toDateString(),
             'category'     => $data['category'],
             'amount'       => $data['amount'],
             'note'         => $data['note'] ?? null,
