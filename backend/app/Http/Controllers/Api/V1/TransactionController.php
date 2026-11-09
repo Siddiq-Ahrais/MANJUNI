@@ -12,6 +12,34 @@ use Illuminate\Validation\ValidationException;
 
 class TransactionController extends Controller
 {
+    public function index(Request $request)
+    {
+        $perPage = min((int) $request->input('per_page', 20), 100);
+
+        $transactions = Transaction::where('business_id', $request->user()->business_id)
+            ->when($request->filled('status'), function ($query) use ($request) {
+                $query->where('status', $request->string('status'));
+            })
+            ->when($request->filled('payment_method'), function ($query) use ($request) {
+                $query->where('payment_method', $request->string('payment_method'));
+            })
+            ->when($request->filled('date'), function ($query) use ($request) {
+                $query->whereDate('transaction_date', $request->date('date'));
+            })
+            ->with(['items.product', 'user:id,name'])
+            ->latest('transaction_date')
+            ->paginate($perPage);
+
+        return response()->json($transactions);
+    }
+
+    public function show(Request $request, Transaction $transaction)
+    {
+        abort_unless($transaction->business_id === $request->user()->business_id, 404);
+
+        return response()->json($transaction->load(['items.product', 'user:id,name', 'voidedBy:id,name']));
+    }
+
     public function store(Request $request)
     {
         $data = $request->validate([
@@ -89,14 +117,16 @@ class TransactionController extends Controller
                     ]);
                 }
 
+                $stockAfter = $product->stock - $item->quantity;
                 $product->decrement('stock', $item->quantity);
+
                 StockMovement::create([
                     'product_id' => $product->id,
                     'user_id' => $request->user()->id,
                     'transaction_item_id' => $item->id,
                     'type' => 'sale',
                     'quantity_change' => -$item->quantity,
-                    'stock_after' => $product->stock - $item->quantity,
+                    'stock_after' => $stockAfter,
                 ]);
             }
 
@@ -106,5 +136,76 @@ class TransactionController extends Controller
         });
 
         return response()->json($transaction);
+    }
+
+    public function cancel(Request $request, Transaction $transaction)
+    {
+        abort_unless($transaction->business_id === $request->user()->business_id, 404);
+
+        if ($transaction->status !== 'pending') {
+            throw ValidationException::withMessages([
+                'status' => ['Hanya transaksi berstatus pending yang dapat dibatalkan.'],
+            ]);
+        }
+
+        $transaction->update([
+            'status' => 'cancelled',
+            'note' => ($transaction->note ? $transaction->note . ' | ' : '') . 'Dibatalkan oleh kasir/pengguna',
+        ]);
+
+        return response()->json([
+            'message' => 'Transaksi berhasil dibatalkan.',
+            'transaction' => $transaction,
+        ]);
+    }
+
+    public function void(Request $request, Transaction $transaction)
+    {
+        abort_unless($transaction->business_id === $request->user()->business_id, 404);
+
+        $data = $request->validate([
+            'void_reason' => ['required', 'string', 'max:255'],
+        ]);
+
+        if ($transaction->status !== 'completed') {
+            throw ValidationException::withMessages([
+                'status' => ['Hanya transaksi berstatus completed yang dapat dibatalkan/void.'],
+            ]);
+        }
+
+        $transaction = DB::transaction(function () use ($transaction, $data, $request) {
+            $transaction->load('items');
+
+            // Kembalikan stok yang sebelumnya terpotong
+            foreach ($transaction->items as $item) {
+                $product = Product::whereKey($item->product_id)->lockForUpdate()->firstOrFail();
+                $stockAfter = $product->stock + $item->quantity;
+                $product->increment('stock', $item->quantity);
+
+                StockMovement::create([
+                    'product_id' => $product->id,
+                    'user_id' => $request->user()->id,
+                    'transaction_item_id' => $item->id,
+                    'type' => 'void_return',
+                    'quantity_change' => $item->quantity,
+                    'stock_after' => $stockAfter,
+                    'note' => 'Pengembalian stok void transaksi: ' . $data['void_reason'],
+                ]);
+            }
+
+            $transaction->update([
+                'status' => 'void',
+                'void_reason' => $data['void_reason'],
+                'voided_by' => $request->user()->id,
+                'voided_at' => now(),
+            ]);
+
+            return $transaction->fresh(['items.product', 'voidedBy:id,name']);
+        });
+
+        return response()->json([
+            'message' => 'Transaksi berhasil di-void dan stok telah dikembalikan.',
+            'transaction' => $transaction,
+        ]);
     }
 }

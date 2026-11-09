@@ -7,6 +7,8 @@
 .phpunit.result.cache
 /.fleet
 /.idea
+/.openidea
+*.swp
 /.nova
 /.phpunit.cache
 /.vscode
