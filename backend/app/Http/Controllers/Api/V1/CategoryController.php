@@ -27,7 +27,7 @@ class CategoryController extends Controller
             'name' => [
                 'required',
                 'string',
-                'max:255',
+                'max:100',
                 Rule::unique('categories', 'name')->where('business_id', $businessId),
             ],
         ]);
@@ -51,18 +51,20 @@ class CategoryController extends Controller
     {
         abort_unless($category->business_id === $request->user()->business_id, 404);
 
+        $businessId = $request->user()->business_id;
+
         $data = $request->validate([
             'name' => [
                 'required',
                 'string',
-                'max:255',
+                'max:100',
                 Rule::unique('categories', 'name')
-                    ->where('business_id', $category->business_id)
+                    ->where('business_id', $businessId)
                     ->ignore($category->id),
             ],
         ]);
 
-        $category->update($data);
+        $category->update(['name' => $data['name']]);
 
         return response()->json($category);
     }
@@ -76,3 +78,4 @@ class CategoryController extends Controller
         return response()->json(['message' => 'Kategori berhasil dihapus.']);
     }
 }
+
