@@ -1220,7 +1220,8 @@ class _ProfilPageState extends State<ProfilPage> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
       appBar: const CustomAppBar(
-        title: 'Profil',
+        showTitle: false,
+        showSearch: false,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),

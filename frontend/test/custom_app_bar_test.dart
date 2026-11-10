@@ -115,4 +115,31 @@ void main() {
 
     expect(find.text('Sistem Kasir Berjalan Normal'), findsNothing);
   });
+
+  testWidgets('CustomAppBar respects showTitle: false and showSearch: false',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          appBar: CustomAppBar(
+            title: 'Products',
+            showTitle: false,
+            showSearch: false,
+          ),
+          body: Center(child: Text('Konten')),
+        ),
+      ),
+    );
+
+    // Title should NOT be visible
+    expect(find.text('Products'), findsNothing);
+
+    // Search button should NOT be present
+    expect(find.byKey(const ValueKey('open_search_btn')), findsNothing);
+
+    // Notification button should still be present
+    expect(find.byIcon(Icons.notifications_none_rounded), findsOneWidget);
+    // Menu button should still be present
+    expect(find.byIcon(Icons.menu_rounded), findsOneWidget);
+  });
 }

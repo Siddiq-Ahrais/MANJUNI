@@ -1,9 +1,39 @@
+import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../services/api_config.dart';
 import '../services/api_service.dart';
+import '../services/auth_service.dart';
 import '../services/cart_service.dart';
 import '../services/navigation_service.dart';
+
+ImageProvider _getImageProvider(String? source) {
+  if (source == null || source.isEmpty) {
+    return const NetworkImage(
+        'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=600&auto=format&fit=crop&q=80');
+  }
+  if (source.startsWith('http://') || source.startsWith('https://')) {
+    return NetworkImage(source);
+  }
+  if (source.startsWith('data:image') ||
+      (!source.contains(Platform.pathSeparator) && source.length > 300)) {
+    try {
+      final base64Str = source.contains(',') ? source.split(',').last : source;
+      return MemoryImage(base64Decode(base64Str));
+    } catch (_) {}
+  }
+  if (!kIsWeb) {
+    try {
+      final file = File(source);
+      if (file.existsSync()) {
+        return FileImage(file);
+      }
+    } catch (_) {}
+  }
+  return NetworkImage(source);
+}
 
 // ─────────────────────────────────────────────
 // DASHBOARD PAGE (Minimalist iOS Style matching UI Mockup)
@@ -138,99 +168,115 @@ class _DashboardPageState extends State<DashboardPage> {
   // HEADER (Alex + Level 12 + Coins + Menu Button)
   // ─────────────────────────────────────────────
   Widget _buildHeader(BuildContext context) {
+    final user = AuthService.currentUser;
+    final userName = user != null && user.name.isNotEmpty ? user.name : 'Alex';
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Row(
-          children: [
-            // Memoji Avatar
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFFDCFCE7),
-                image: const DecorationImage(
-                  image: NetworkImage(
-                    'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80',
+        Tooltip(
+          message: 'Buka Profil',
+          waitDuration: const Duration(milliseconds: 300),
+          child: GestureDetector(
+            onTap: () {
+              NavigationService.navigateTo(4);
+            },
+            behavior: HitTestBehavior.opaque,
+            child: MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: Row(
+                children: [
+                  // Memoji Avatar
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: const Color(0xFFDCFCE7),
+                      image: const DecorationImage(
+                        image: NetworkImage(
+                          'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80',
+                        ),
+                        fit: BoxFit.cover,
+                      ),
+                      border: Border.all(color: Colors.white, width: 2),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x12000000),
+                          blurRadius: 8,
+                          offset: Offset(0, 2),
+                        ),
+                      ],
+                    ),
                   ),
-                  fit: BoxFit.cover,
-                ),
-                border: Border.all(color: Colors.white, width: 2),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x12000000),
-                    blurRadius: 8,
-                    offset: Offset(0, 2),
+                  const SizedBox(width: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Hello, $userName!',
+                        style: const TextStyle(
+                          fontSize: 16.5,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF0F172A),
+                          letterSpacing: -0.4,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 7, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Text(
+                              'Level 12',
+                              style: TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF64748B),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Row(
+                            children: [
+                              Container(
+                                width: 14,
+                                height: 14,
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFFEAB308),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Center(
+                                  child: Text(
+                                    '🪙',
+                                    style: TextStyle(fontSize: 8),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              const Text(
+                                '2,564',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF334155),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Hello, Alex!',
-                  style: TextStyle(
-                    fontSize: 16.5,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF0F172A),
-                    letterSpacing: -0.4,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 7, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF1F5F9),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Text(
-                        'Level 12',
-                        style: TextStyle(
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF64748B),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Row(
-                      children: [
-                        Container(
-                          width: 14,
-                          height: 14,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFFEAB308),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Center(
-                            child: Text(
-                              '🪙',
-                              style: TextStyle(fontSize: 8),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        const Text(
-                          '2,564',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF334155),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ],
+          ),
         ),
 
         // Circular Menu Button
@@ -1076,7 +1122,7 @@ class _DashboardPageState extends State<DashboardPage> {
                               borderRadius: BorderRadius.circular(12),
                               color: const Color(0xFFF8FAFC),
                               image: DecorationImage(
-                                image: NetworkImage(p['image'] as String? ?? ''),
+                                image: _getImageProvider(p['image'] as String?),
                                 fit: BoxFit.cover,
                               ),
                             ),
@@ -1333,7 +1379,7 @@ class _DashboardPageState extends State<DashboardPage> {
                           borderRadius: BorderRadius.circular(20),
                           color: const Color(0xFFF8FAFC),
                           image: DecorationImage(
-                            image: NetworkImage(p['image'] as String? ?? ''),
+                            image: _getImageProvider(p['image'] as String?),
                             fit: BoxFit.contain,
                           ),
                         ),
@@ -1365,7 +1411,7 @@ class _DashboardPageState extends State<DashboardPage> {
                                 width: isSelected ? 1.8 : 1.0,
                               ),
                               image: DecorationImage(
-                                image: NetworkImage(imgUrl),
+                                image: _getImageProvider(imgUrl),
                                 fit: BoxFit.cover,
                               ),
                             ),

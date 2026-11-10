@@ -1,9 +1,39 @@
+import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../services/api_config.dart';
 import '../services/api_service.dart';
 import '../services/cart_service.dart';
 import '../widgets/custom_app_bar.dart';
+
+ImageProvider _getImageProvider(String? source) {
+  if (source == null || source.isEmpty) {
+    return const NetworkImage(
+        'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=600&auto=format&fit=crop&q=80');
+  }
+  if (source.startsWith('http://') || source.startsWith('https://')) {
+    return NetworkImage(source);
+  }
+  if (source.startsWith('data:image') ||
+      (!source.contains(Platform.pathSeparator) && source.length > 300)) {
+    try {
+      final base64Str = source.contains(',') ? source.split(',').last : source;
+      return MemoryImage(base64Decode(base64Str));
+    } catch (_) {}
+  }
+  if (!kIsWeb) {
+    try {
+      final file = File(source);
+      if (file.existsSync()) {
+        return FileImage(file);
+      }
+    } catch (_) {}
+  }
+  return NetworkImage(source);
+}
 
 // ─────────────────────────────────────────────
 // PRODUK PAGE (Minimalist iOS Style matching UI Mockup)
@@ -99,16 +129,45 @@ class _ProdukPageState extends State<ProdukPage> {
     final imageCtrl = TextEditingController();
     String category = 'Footwear';
     String unit = 'pair';
+    Uint8List? pickedImageBytes;
 
     showDialog(
       context: context,
       builder: (ctx) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            Future<void> pickImage(ImageSource source) async {
+              try {
+                final picker = ImagePicker();
+                final file = await picker.pickImage(
+                  source: source,
+                  maxWidth: 1200,
+                  maxHeight: 1200,
+                  imageQuality: 85,
+                );
+                if (file != null) {
+                  final bytes = await file.readAsBytes();
+                  setDialogState(() {
+                    pickedImageBytes = bytes;
+                    imageCtrl.text = file.path;
+                  });
+                }
+              } catch (e) {
+                debugPrint('Error picking image: $e');
+              }
+            }
+
+            final screenWidth = MediaQuery.of(context).size.width;
+
             return AlertDialog(
               backgroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(24)),
+              insetPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+              titlePadding: const EdgeInsets.fromLTRB(20, 22, 20, 0),
+              contentPadding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+              actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
               title: const Text(
                 'Add New Product',
                 style: TextStyle(
@@ -117,10 +176,13 @@ class _ProdukPageState extends State<ProdukPage> {
                   color: kDark,
                 ),
               ),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
+              content: SizedBox(
+                width: screenWidth.clamp(0.0, 480.0),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                     TextField(
                       controller: nameCtrl,
                       decoration: InputDecoration(
@@ -181,37 +243,189 @@ class _ProdukPageState extends State<ProdukPage> {
                         if (val != null) setDialogState(() => category = val);
                       },
                     ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: imageCtrl,
-                      decoration: InputDecoration(
-                        labelText: 'Image URL (optional)',
-                        hintText: 'https://images.unsplash.com/...',
-                        isDense: true,
-                        border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12)),
+                    const SizedBox(height: 16),
+
+                    // Image Upload Section
+                    const Text(
+                      'Product Image',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: kDark,
                       ),
                     ),
+                    const SizedBox(height: 8),
+
+                    if (pickedImageBytes != null)
+                      Stack(
+                        children: [
+                          Container(
+                            height: 140,
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(14),
+                              color: const Color(0xFFF1F5F9),
+                              border: Border.all(color: const Color(0xFFE2E8F0)),
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(14),
+                              child: Image.memory(
+                                pickedImageBytes!,
+                                fit: BoxFit.cover,
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            top: 8,
+                            right: 8,
+                            child: GestureDetector(
+                              onTap: () {
+                                setDialogState(() {
+                                  pickedImageBytes = null;
+                                  imageCtrl.clear();
+                                });
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(5),
+                                decoration: const BoxDecoration(
+                                  color: Colors.black54,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(Icons.close_rounded,
+                                    size: 16, color: Colors.white),
+                              ),
+                            ),
+                          ),
+                        ],
+                      )
+                    else ...[
+                      // Upload Box Placeholder
+                      GestureDetector(
+                        onTap: () => pickImage(ImageSource.gallery),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 18, horizontal: 16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                                color: const Color(0xFFCBD5E1), width: 1.2),
+                          ),
+                          child: const Column(
+                            children: [
+                              Icon(Icons.add_photo_alternate_outlined,
+                                  size: 34, color: Color(0xFF64748B)),
+                              SizedBox(height: 6),
+                              Text(
+                                'Upload Image / Foto Produk',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: kDark,
+                                ),
+                              ),
+                              SizedBox(height: 2),
+                              Text(
+                                'Ketuk untuk memilih dari Galeri atau Kamera',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Color(0xFF94A3B8),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+
+                      // Quick Source Selector (Gallery / Camera)
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () => pickImage(ImageSource.gallery),
+                              icon: const Icon(Icons.photo_library_outlined,
+                                  size: 16, color: kDark),
+                              label: const Text('Galeri',
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: kDark)),
+                              style: OutlinedButton.styleFrom(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 8),
+                                side: const BorderSide(
+                                    color: Color(0xFFE2E8F0)),
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10)),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () => pickImage(ImageSource.camera),
+                              icon: const Icon(Icons.camera_alt_outlined,
+                                  size: 16, color: kDark),
+                              label: const Text('Kamera',
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: kDark)),
+                              style: OutlinedButton.styleFrom(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 8),
+                                side: const BorderSide(
+                                    color: Color(0xFFE2E8F0)),
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10)),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+
+                      // Optional URL Field
+                      TextField(
+                        controller: imageCtrl,
+                        decoration: InputDecoration(
+                          labelText: 'Atau masukkan Image URL (opsional)',
+                          hintText: 'https://images.unsplash.com/...',
+                          isDense: true,
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('Cancel',
-                      style: TextStyle(color: Color(0xFF64748B))),
-                ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel',
+                    style: TextStyle(
+                      color: Color(0xFF64748B),
+                      fontWeight: FontWeight.w600,
+                    )),
+              ),
                 ElevatedButton(
                   onPressed: () async {
                     final name = nameCtrl.text.trim();
                     final price = int.tryParse(priceCtrl.text.trim()) ?? 0;
                     final stock = int.tryParse(stockCtrl.text.trim()) ?? 0;
+                    final image = imageCtrl.text.trim();
                     if (name.isNotEmpty && price > 0) {
                       await ApiService.addProduct(
                         name: name,
                         price: price,
                         stock: stock,
                         unit: unit,
+                        category: category,
+                        image: image.isNotEmpty ? image : null,
                       );
                       if (context.mounted) {
                         Navigator.pop(ctx);
@@ -245,7 +459,10 @@ class _ProdukPageState extends State<ProdukPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
-      appBar: const CustomAppBar(title: 'Products'),
+      appBar: const CustomAppBar(
+        showTitle: false,
+        showSearch: false,
+      ),
       body: SafeArea(
         child: RefreshIndicator(
           color: kDark,
@@ -537,7 +754,7 @@ class _ProdukPageState extends State<ProdukPage> {
                           borderRadius: BorderRadius.circular(20),
                           color: const Color(0xFFF8FAFC),
                           image: DecorationImage(
-                            image: NetworkImage(p['image'] as String? ?? ''),
+                            image: _getImageProvider(p['image'] as String?),
                             fit: BoxFit.contain,
                           ),
                         ),
@@ -569,7 +786,7 @@ class _ProdukPageState extends State<ProdukPage> {
                                 width: isSelected ? 1.8 : 1.0,
                               ),
                               image: DecorationImage(
-                                image: NetworkImage(imgUrl),
+                                image: _getImageProvider(imgUrl),
                                 fit: BoxFit.cover,
                               ),
                             ),
@@ -895,7 +1112,7 @@ class _ProductCard extends StatelessWidget {
                     color: const Color(0xFFF8FAFC),
                     image: imgUrl.isNotEmpty
                         ? DecorationImage(
-                            image: NetworkImage(imgUrl),
+                            image: _getImageProvider(imgUrl),
                             fit: BoxFit.cover,
                           )
                         : null,

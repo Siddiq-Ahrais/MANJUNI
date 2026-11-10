@@ -14,7 +14,7 @@ class _TransaksiPageState extends State<TransaksiPage> {
   static const Color kGreen = Color(0xFF1E874B);
   bool _isLoading = true;
   List<Map<String, dynamic>> _transactions = [];
-  String _searchQuery = '';
+  final String _searchQuery = '';
 
   List<Map<String, dynamic>> get _filteredTransactions {
     if (_searchQuery.trim().isEmpty) return _transactions;
@@ -155,11 +155,9 @@ class _TransaksiPageState extends State<TransaksiPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
-      appBar: CustomAppBar(
-        title: 'Transaksi',
-        searchHint: 'Cari invoice, pelanggan, atau produk...',
-        onSearchChanged: (q) => setState(() => _searchQuery = q),
-        onSearchClosed: () => setState(() => _searchQuery = ''),
+      appBar: const CustomAppBar(
+        showTitle: false,
+        showSearch: false,
       ),
       body: RefreshIndicator(
         color: kGreen,

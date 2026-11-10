@@ -290,6 +290,8 @@ class ApiService {
     required int price,
     required int stock,
     required String unit,
+    String category = 'Footwear',
+    String? image,
   }) async {
     try {
       final uri = Uri.parse(ApiConfig.productsUrl);
@@ -299,29 +301,39 @@ class ApiService {
             headers: AuthService.authHeaders,
             body: jsonEncode({
               'name': name,
+              'category': category,
+              'cost_price': (price * 0.7).toInt(),
+              'selling_price': price,
               'price': price,
               'stock': stock,
               'unit': unit,
+              if (image != null && image.isNotEmpty) 'image': image,
             }),
           )
           .timeout(const Duration(seconds: 4));
 
       if (res.statusCode == 200 || res.statusCode == 201) {
         isConnectedNotifier.value = true;
-        return true;
       }
     } catch (_) {
       isConnectedNotifier.value = false;
     }
 
-    // Jika offline, simpan ke memori lokal
+    // Simpan ke memori lokal / fallback
     _fallbackProducts.insert(0, {
       'id': _fallbackProducts.length + 1,
       'name': name,
+      'category': category,
       'price': price,
+      'cost_price': (price * 0.7).toInt(),
       'stock': stock,
       'unit': unit,
       'low': stock <= 5,
+      'image': (image != null && image.isNotEmpty)
+          ? image
+          : 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=600&auto=format&fit=crop&q=80',
+      'revenue': 0,
+      'sales': 0,
     });
     dataChangedNotifier.value++; // Notify UI to refresh
     return true;

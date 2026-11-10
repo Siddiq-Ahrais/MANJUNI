@@ -161,7 +161,8 @@ class _KeranjangPageState extends State<KeranjangPage> {
         return Scaffold(
           backgroundColor: const Color(0xFFF8F9FA),
           appBar: const CustomAppBar(
-            title: 'Keranjang',
+            showTitle: false,
+            showSearch: false,
           ),
           body: SingleChildScrollView(
             padding: const EdgeInsets.all(16),

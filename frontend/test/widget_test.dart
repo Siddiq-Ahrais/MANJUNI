@@ -6,8 +6,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:majunih/features/auth/screens/login_screen.dart';
 import 'package:majunih/features/auth/screens/register_screen.dart';
 import 'package:majunih/services/auth_service.dart';
+import 'package:majunih/services/navigation_service.dart';
 import 'package:majunih/shell.dart';
 
+@Timeout(Duration(seconds: 30))
 void main() {
   setUpAll(() {
     HttpOverrides.global = _MockHttpOverrides();
@@ -17,9 +19,10 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     await AuthService.init();
     await AuthService.logout();
+    NavigationService.selectedIndex.value = 0;
   });
 
-  testWidgets('LoginScreen renders brand, inputs, demo chips, and actions',
+  testWidgets('LoginScreen renders brand, inputs, and actions',
       (WidgetTester tester) async {
     await tester.pumpWidget(
       const MaterialApp(
@@ -36,14 +39,14 @@ void main() {
     expect(find.text('Masuk Mode Offline / Tamu'), findsOneWidget);
     expect(find.text('Daftar Baru'), findsOneWidget);
 
-    // Verify Demo Chips
-    expect(find.text('Owner'), findsOneWidget);
-    expect(find.text('Kasir'), findsOneWidget);
-    expect(find.text('Partner'), findsOneWidget);
+    // Verify API bar and demo chips are removed
+    expect(find.text('Ubah Host'), findsNothing);
+    expect(find.text('Owner'), findsNothing);
+    expect(find.text('Kasir'), findsNothing);
+    expect(find.text('Partner'), findsNothing);
 
-    // Tap Owner chip
-    await tester.ensureVisible(find.text('Owner'));
-    await tester.tap(find.text('Owner'));
+    // Enter text into email field
+    await tester.enterText(find.byType(TextField).first, 'owner@manjuni.com');
     await tester.pumpAndSettle();
 
     expect(find.text('owner@manjuni.com'), findsOneWidget);
@@ -120,6 +123,12 @@ void main() {
 
     // Verify MainShell renders
     expect(find.byType(MainShell), findsOneWidget);
+
+    // Verify tapping profile header navigates to Profile page (index 4)
+    expect(find.text('Hello, Test Owner!'), findsOneWidget);
+    await tester.tap(find.text('Hello, Test Owner!'));
+    await tester.pumpAndSettle();
+    expect(NavigationService.selectedIndex.value, 4);
 
     // Logout
     await AuthService.logout();

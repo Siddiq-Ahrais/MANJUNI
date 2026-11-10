@@ -5,6 +5,8 @@ import '../services/navigation_service.dart';
 class CustomAppBar extends StatefulWidget implements PreferredSizeWidget {
   final String title;
   final String? subtitle;
+  final bool showTitle;
+  final bool showSearch;
   final VoidCallback? onSearchPressed;
   final VoidCallback? onNotificationPressed;
   final VoidCallback? onMenuPressed;
@@ -17,8 +19,10 @@ class CustomAppBar extends StatefulWidget implements PreferredSizeWidget {
 
   const CustomAppBar({
     super.key,
-    required this.title,
+    this.title = '',
     this.subtitle,
+    this.showTitle = true,
+    this.showSearch = true,
     this.onSearchPressed,
     this.onNotificationPressed,
     this.onMenuPressed,
@@ -120,6 +124,9 @@ class _CustomAppBarState extends State<CustomAppBar> {
   }
 
   Widget _buildTitleSection() {
+    if (!widget.showTitle || widget.title.isEmpty) {
+      return const SizedBox.shrink(key: ValueKey('title_empty'));
+    }
     return Column(
       key: const ValueKey('title_section'),
       mainAxisSize: MainAxisSize.min,
@@ -483,21 +490,23 @@ class _CustomAppBarState extends State<CustomAppBar> {
                   const SizedBox(width: 8),
                   widget.trailingExtra!,
                 ],
-                const SizedBox(width: 8),
-                if (!_isSearching) ...[
-                  _HoverIconButton(
-                    key: const ValueKey('open_search_btn'),
-                    icon: Icons.search_rounded,
-                    tooltip: 'Cari',
-                    onPressed: _openSearch,
-                  ),
-                ] else ...[
-                  _HoverIconButton(
-                    key: const ValueKey('close_search_btn'),
-                    icon: Icons.close_rounded,
-                    tooltip: 'Tutup Pencarian',
-                    onPressed: _closeSearch,
-                  ),
+                if (widget.showSearch) ...[
+                  const SizedBox(width: 8),
+                  if (!_isSearching) ...[
+                    _HoverIconButton(
+                      key: const ValueKey('open_search_btn'),
+                      icon: Icons.search_rounded,
+                      tooltip: 'Cari',
+                      onPressed: _openSearch,
+                    ),
+                  ] else ...[
+                    _HoverIconButton(
+                      key: const ValueKey('close_search_btn'),
+                      icon: Icons.close_rounded,
+                      tooltip: 'Tutup Pencarian',
+                      onPressed: _closeSearch,
+                    ),
+                  ],
                 ],
                 const SizedBox(width: 6),
                 _NotificationButton(
