@@ -1,6 +1,10 @@
-import "package:flutter/material.dart";
+import 'package:flutter/material.dart';
 
-import "shell.dart";
+import 'data/models/user_model.dart';
+import 'features/auth/screens/login_screen.dart';
+import 'features/auth/screens/register_screen.dart';
+import 'services/auth_service.dart';
+import 'shell.dart';
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -8,7 +12,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Toko Kasir',
+      title: 'MANJUNI POS',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
@@ -29,8 +33,20 @@ class MyApp extends StatelessWidget {
           child: child!,
         );
       },
-      home: const MainShell(),
+      routes: {
+        '/login': (context) => const LoginScreen(),
+        '/register': (context) => const RegisterScreen(),
+        '/main': (context) => const MainShell(),
+      },
+      home: ValueListenableBuilder<UserModel?>(
+        valueListenable: AuthService.currentUserNotifier,
+        builder: (context, user, _) {
+          if (user != null) {
+            return const MainShell();
+          }
+          return const LoginScreen();
+        },
+      ),
     );
   }
 }
-

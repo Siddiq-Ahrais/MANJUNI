@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import '../data/models/user_model.dart';
 import '../services/api_service.dart';
+import '../services/auth_service.dart';
 import '../services/cart_service.dart';
 
 class FullSidebar extends StatelessWidget {
@@ -107,6 +109,60 @@ class FullSidebar extends StatelessWidget {
                       isSelected: selectedIndex == 4,
                       onTap: () => onItemSelected(4),
                     ),
+                    const SizedBox(height: 10),
+
+                    // 6. Keluar
+                    _SidebarMenuItem(
+                      icon: Icons.logout_rounded,
+                      title: 'Keluar Akun',
+                      subtitle: 'Keluar sesi dan kembali ke halaman login',
+                      isSelected: false,
+                      onTap: () async {
+                        Navigator.of(context).pop();
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            title: const Row(
+                              children: [
+                                Icon(Icons.logout_rounded, color: Color(0xFFEF4444)),
+                                SizedBox(width: 8),
+                                Text(
+                                  'Konfirmasi Keluar',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            content: const Text(
+                              'Apakah Anda yakin ingin keluar dari sesi akun toko ini?',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, false),
+                                child: const Text('Batal'),
+                              ),
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFFEF4444),
+                                  foregroundColor: Colors.white,
+                                ),
+                                onPressed: () => Navigator.pop(ctx, true),
+                                child: const Text('Keluar'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirm == true) {
+                          await AuthService.logout();
+                          CartService.clear();
+                        }
+                      },
+                    ),
                     const SizedBox(height: 28),
 
                     // Quick System Status Card
@@ -155,16 +211,24 @@ class FullSidebar extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
-                  'Warung Maju Jaya',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF0F172A),
-                    letterSpacing: -0.3,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                ValueListenableBuilder<UserModel?>(
+                  valueListenable: AuthService.currentUserNotifier,
+                  builder: (context, user, _) {
+                    final businessTitle = user?.business?.name.isNotEmpty == true
+                        ? user!.business!.name
+                        : 'MANJUNI POS';
+                    return Text(
+                      businessTitle,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF0F172A),
+                        letterSpacing: -0.3,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    );
+                  },
                 ),
                 const SizedBox(height: 3),
                 ValueListenableBuilder<bool?>(
