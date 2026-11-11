@@ -45,10 +45,9 @@ void main() {
     expect(find.text('Sembako'), findsWidgets);
     expect(find.text('Minuman'), findsWidgets);
 
-    // Verify FAB "Tambah Produk" is present and enabled
-    final fabFinder = find.byType(FloatingActionButton);
-    expect(fabFinder, findsOneWidget);
-    expect(find.text('Tambah Produk'), findsWidgets);
+    // Verify no redundant FAB or extra buttons, only single button below product list
+    expect(find.byType(FloatingActionButton), findsNothing);
+    expect(find.widgetWithText(ElevatedButton, 'Tambah Produk'), findsOneWidget);
   });
 
   testWidgets('Tambah Produk modal opens and successfully adds a product with category/jenis',
@@ -62,9 +61,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Tap FloatingActionButton to open the Add Product modal
-    final fabFinder = find.byType(FloatingActionButton);
-    await tester.tap(fabFinder);
+    // Tap single "Tambah Produk" button below Daftar Produk
+    final tambahBtn = find.widgetWithText(ElevatedButton, 'Tambah Produk');
+    expect(tambahBtn, findsOneWidget);
+    await tester.ensureVisible(tambahBtn);
+    await tester.pumpAndSettle();
+    await tester.tap(tambahBtn);
     await tester.pumpAndSettle();
 
     // Verify modal elements are visible

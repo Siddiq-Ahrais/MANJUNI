@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../services/api_config.dart';
 import '../services/api_service.dart';
 import '../services/cart_service.dart';
-import '../widgets/custom_app_bar.dart';
 
 class ProfilPage extends StatefulWidget {
   const ProfilPage({super.key});
@@ -16,13 +15,14 @@ class _ProfilPageState extends State<ProfilPage> {
   bool _isOfflineMode = true;
   bool _isSyncing = false;
   int _productCount = 0;
+  int _customerCount = 0;
   String _lastSyncText = 'Belum ada sinkronisasi';
 
   @override
   void initState() {
     super.initState();
     _checkStatus(silent: true);
-    _loadProductCount();
+    _loadStats();
     ApiService.dataChangedNotifier.addListener(_onDataChanged);
   }
 
@@ -33,13 +33,33 @@ class _ProfilPageState extends State<ProfilPage> {
   }
 
   void _onDataChanged() {
-    if (mounted) _loadProductCount();
+    if (mounted) _loadStats();
   }
 
-  Future<void> _loadProductCount() async {
+  Future<void> _loadStats() async {
     final products = await ApiService.getProducts();
+    final transactions = await ApiService.getTransactions();
+    final customers = await ApiService.getCustomers();
+
+    final Set<String> uniqueCustomers = {};
+    for (final c in customers) {
+      final name = c['name']?.toString().trim();
+      if (name != null && name.isNotEmpty) {
+        uniqueCustomers.add(name);
+      }
+    }
+    for (final t in transactions) {
+      final c = t['customer']?.toString().trim();
+      if (c != null && c.isNotEmpty && c.toLowerCase() != 'pelanggan umum') {
+        uniqueCustomers.add(c);
+      }
+    }
+
     if (!mounted) return;
-    setState(() => _productCount = products.length);
+    setState(() {
+      _productCount = products.length;
+      _customerCount = uniqueCustomers.length;
+    });
   }
 
   Future<void> _checkStatus({bool silent = false}) async {
@@ -315,15 +335,14 @@ class _ProfilPageState extends State<ProfilPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
-      appBar: const CustomAppBar(
-        title: 'Profil',
-        showActions: false,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            // Header Profile Card (Mint Green, matching Image 3)
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              _buildHeader(),
+              const SizedBox(height: 20),
+              // Header Profile Card (Mint Green, matching Image 3)
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -439,7 +458,7 @@ class _ProfilPageState extends State<ProfilPage> {
                 ),
                 const SizedBox(width: 12),
 
-                // Pelanggan Kasbon (Lavender/Blue)
+                // Pelanggan (Lavender/Blue)
                 Expanded(
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
@@ -447,11 +466,11 @@ class _ProfilPageState extends State<ProfilPage> {
                       color: const Color(0xFFB8C7FF),
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    child: const Column(
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Pelanggan Kasbon',
+                        const Text(
+                          'Pelanggan',
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
@@ -460,13 +479,13 @@ class _ProfilPageState extends State<ProfilPage> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        SizedBox(height: 4),
+                        const SizedBox(height: 4),
                         FittedBox(
                           fit: BoxFit.scaleDown,
                           alignment: Alignment.centerLeft,
                           child: Text(
-                            '0 Orang',
-                            style: TextStyle(
+                            '$_customerCount Orang',
+                            style: const TextStyle(
                               fontSize: 24,
                               fontWeight: FontWeight.bold,
                               color: Color(0xFF111827),
@@ -644,13 +663,13 @@ class _ProfilPageState extends State<ProfilPage> {
                     icon: Icons.people_outline_rounded,
                     iconBg: const Color(0xFFD9E6FF),
                     iconColor: const Color(0xFF2563EB),
-                    title: 'Pelanggan \u0026 Kasbon',
+                    title: 'Pelanggan',
                     onTap: () {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Menu Pelanggan & Kasbon dibuka (2 Orang terdaftar)'),
+                        SnackBar(
+                          content: Text('Menu Pelanggan dibuka ($_customerCount Orang terdaftar)'),
                           behavior: SnackBarBehavior.floating,
-                          duration: Duration(seconds: 1),
+                          duration: const Duration(seconds: 1),
                         ),
                       );
                     },
@@ -739,6 +758,55 @@ class _ProfilPageState extends State<ProfilPage> {
           ],
         ),
       ),
+    ),
+  );
+}
+
+  Widget _buildHeader() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: const BoxDecoration(
+                color: Color(0xFFE8F5E9),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.person_outline_rounded,
+                color: kGreen,
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Profil',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF111827),
+                  ),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  'Warung Maju Jaya',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

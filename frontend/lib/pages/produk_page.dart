@@ -726,61 +726,30 @@ class _ProdukPageState extends State<ProdukPage> {
                 ),
                 const SizedBox(height: 16),
 
-                // Daftar Produk Header + Tombol Tambah Cepat
+                // Daftar Produk Header
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(
-                      children: [
-                        const Text(
-                          'Daftar Produk',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 17,
-                            color: Color(0xFF111827),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFE8F5E9),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Text(
-                            '${_filtered.length} produk',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: kGreen,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ],
+                    const Text(
+                      'Daftar Produk',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 17,
+                        color: Color(0xFF111827),
+                      ),
                     ),
-                    InkWell(
-                      onTap: _showAddProductDialog,
-                      borderRadius: BorderRadius.circular(8),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE8F5E9),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '${_filtered.length} produk',
+                        style: const TextStyle(
+                          fontSize: 12,
                           color: kGreen,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.add, size: 16, color: Colors.white),
-                            SizedBox(width: 4),
-                            Text(
-                              'Tambah',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ],
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
                     ),
@@ -829,59 +798,63 @@ class _ProdukPageState extends State<ProdukPage> {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: kGreen,
                             foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                           ),
                           icon: const Icon(Icons.add, size: 18),
-                          label: const Text('Tambah Produk'),
+                          label: const Text('Tambah Produk', style: TextStyle(fontWeight: FontWeight.bold)),
                         ),
                       ],
                     ),
                   )
                 else
                   Column(
-                    children: _filtered.map((item) {
-                      return _ProductCardItem(
-                        product: item,
-                        formatRp: _formatRp,
-                        onAdd: () {
-                          CartService.addItem(
-                            item['name'] as String,
-                            (item['price'] as int?) ?? 0,
-                            (item['unit'] as String?) ?? 'kemasan',
-                          );
-                          ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('${item['name']} ditambahkan ke keranjang!'),
-                              backgroundColor: kGreen,
-                              duration: const Duration(milliseconds: 1200),
-                              behavior: SnackBarBehavior.floating,
-                            ),
-                          );
-                        },
-                        onDelete: () => _confirmDelete(item),
-                      );
-                    }).toList(),
+                    children: [
+                      ..._filtered.map((item) {
+                        return _ProductCardItem(
+                          product: item,
+                          formatRp: _formatRp,
+                          onAdd: () {
+                            CartService.addItem(
+                              item['name'] as String,
+                              (item['price'] as int?) ?? 0,
+                              (item['unit'] as String?) ?? 'kemasan',
+                            );
+                            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('${item['name']} ditambahkan ke keranjang!'),
+                                backgroundColor: kGreen,
+                                duration: const Duration(milliseconds: 1200),
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          },
+                          onDelete: () => _confirmDelete(item),
+                        );
+                      }),
+                      const SizedBox(height: 12),
+                      ElevatedButton.icon(
+                        onPressed: _showAddProductDialog,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: kGreen,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          minimumSize: const Size(double.infinity, 48),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        icon: const Icon(Icons.add, size: 20),
+                        label: const Text(
+                          'Tambah Produk',
+                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
                   ),
 
-                const SizedBox(height: 80),
+                const SizedBox(height: 40),
               ],
             ),
-          ),
-        ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showAddProductDialog,
-        backgroundColor: kGreen,
-        tooltip: 'Tambah Produk Baru',
-        icon: const Icon(Icons.add, color: Colors.white, size: 22),
-        label: const Text(
-          'Tambah Produk',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-            fontSize: 14,
           ),
         ),
       ),
@@ -890,63 +863,45 @@ class _ProdukPageState extends State<ProdukPage> {
 
   Widget _buildHeader() {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Row(
+        Container(
+          width: 48,
+          height: 48,
+          decoration: const BoxDecoration(
+            color: Color(0xFFE8F5E9),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(
+            Icons.person_rounded,
+            color: Color(0xFF1E874B),
+            size: 28,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: const BoxDecoration(
-                color: Color(0xFFE8F5E9),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.person_rounded,
-                color: Color(0xFF1E874B),
-                size: 28,
-              ),
+            const Text(
+              'Produk',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF111827)),
             ),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            const SizedBox(height: 4),
+            Row(
               children: [
-                const Text(
-                  'Produk',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF111827)),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade200,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        '${_products.length} produk terdaftar',
-                        style: TextStyle(fontSize: 12, color: Colors.grey.shade700, fontWeight: FontWeight.w500),
-                      ),
-                    ),
-                  ],
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade200,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '${_products.length} produk terdaftar',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade700, fontWeight: FontWeight.w500),
+                  ),
                 ),
               ],
             ),
           ],
-        ),
-        IconButton(
-          onPressed: _showAddProductDialog,
-          tooltip: 'Tambah Produk',
-          icon: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: const Color(0xFFE8F5E9),
-              shape: BoxShape.circle,
-              border: Border.all(color: const Color(0x4D1E874B)),
-            ),
-            child: const Icon(Icons.add, size: 20, color: kGreen),
-          ),
         ),
       ],
     );

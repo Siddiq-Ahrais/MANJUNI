@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 
 import 'pages/dashboard_page.dart';
 import 'pages/produk_page.dart';
-import 'pages/keranjang_ui.dart';
-import 'pages/transaksi_ui.dart';
-import 'pages/profil_ui.dart';
+import 'pages/keranjang_page.dart';
+import 'pages/transaksi_page.dart';
+import 'pages/profil_page.dart';
 import 'services/cart_service.dart';
+import 'services/navigation_service.dart';
 
 class MobileShell extends StatefulWidget {
   const MobileShell({super.key});
@@ -17,12 +18,30 @@ class MobileShell extends StatefulWidget {
 class _MobileShellState extends State<MobileShell> {
   int _currentIndex = 0;
 
+  @override
+  void initState() {
+    super.initState();
+    NavigationService.selectedIndex.addListener(_onNavigationChanged);
+  }
+
+  @override
+  void dispose() {
+    NavigationService.selectedIndex.removeListener(_onNavigationChanged);
+    super.dispose();
+  }
+
+  void _onNavigationChanged() {
+    if (mounted && _currentIndex != NavigationService.selectedIndex.value) {
+      setState(() => _currentIndex = NavigationService.selectedIndex.value);
+    }
+  }
+
   final List<Widget> _pages = [
     const DashboardPage(),
     const ProdukPage(),
-    const KeranjangUI(),
-    const TransaksiUI(),
-    const ProfilUI(),
+    const KeranjangPage(),
+    const TransaksiPage(),
+    const ProfilPage(),
   ];
 
   @override
@@ -42,11 +61,11 @@ class _MobileShellState extends State<MobileShell> {
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border(top: BorderSide(color: Colors.grey.shade200)),
-        boxShadow: [
+        boxShadow: const [
           BoxShadow(
-            color: const Color(0x0D000000),
+            color: Color(0x0D000000),
             blurRadius: 10,
-            offset: const Offset(0, -5),
+            offset: Offset(0, -5),
           )
         ],
       ),
@@ -76,9 +95,7 @@ class _MobileShellState extends State<MobileShell> {
 
     return GestureDetector(
       onTap: () {
-        setState(() {
-          _currentIndex = index;
-        });
+        NavigationService.navigateTo(index);
       },
       behavior: HitTestBehavior.opaque,
       child: Stack(
@@ -88,7 +105,7 @@ class _MobileShellState extends State<MobileShell> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               decoration: BoxDecoration(
-                color: const Color(0xFF0F172A), // Dark color from original design
+                color: const Color(0xFF0F172A),
                 borderRadius: BorderRadius.circular(24),
               ),
               child: Row(

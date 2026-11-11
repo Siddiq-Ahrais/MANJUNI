@@ -29,9 +29,9 @@ void main() {
 
     // Verify Produk page is loaded and active
     expect(find.text('Daftar Produk'), findsOneWidget);
-    expect(find.text('Tambah Produk'), findsWidgets);
+    expect(find.widgetWithText(ElevatedButton, 'Tambah Produk'), findsOneWidget);
 
-    // Verify FloatingActionButton is present
-    expect(find.byType(FloatingActionButton), findsOneWidget);
+    // Verify FloatingActionButton is removed in favor of single button under Daftar Produk
+    expect(find.byType(FloatingActionButton), findsNothing);
   });
 }

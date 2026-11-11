@@ -15,10 +15,30 @@ class ApiService {
   // Fallback initial transactions (empty for guest mode)
   static final List<Map<String, dynamic>> _fallbackTransactions = [];
 
+  // Fallback initial customers (empty for guest mode)
+  static final List<Map<String, dynamic>> _fallbackCustomers = [];
+
   static void resetAllData() {
     _fallbackProducts.clear();
     _fallbackTransactions.clear();
+    _fallbackCustomers.clear();
     dataChangedNotifier.value++;
+  }
+
+  /// Ambil daftar pelanggan
+  static Future<List<Map<String, dynamic>>> getCustomers() async {
+    return List<Map<String, dynamic>>.from(_fallbackCustomers);
+  }
+
+  /// Tambah pelanggan baru
+  static Future<bool> addCustomer({required String name, String? phone}) async {
+    _fallbackCustomers.add({
+      'id': DateTime.now().millisecondsSinceEpoch,
+      'name': name.trim(),
+      'phone': phone ?? '',
+    });
+    dataChangedNotifier.value++;
+    return true;
   }
 
   /// Uji koneksi ke endpoint test.php di localhost
