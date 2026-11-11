@@ -14,6 +14,7 @@ class CustomAppBar extends StatefulWidget implements PreferredSizeWidget {
   final VoidCallback? onSearchClosed;
   final TextEditingController? searchController;
   final String? searchHint;
+  final bool showActions; // Added to hide right-side icons if requested
 
   const CustomAppBar({
     super.key,
@@ -28,6 +29,7 @@ class CustomAppBar extends StatefulWidget implements PreferredSizeWidget {
     this.onSearchClosed,
     this.searchController,
     this.searchHint,
+    this.showActions = true,
   });
 
   static const Color primaryGreen = Color(0xFF164E2E);
@@ -483,32 +485,34 @@ class _CustomAppBarState extends State<CustomAppBar> {
                   const SizedBox(width: 8),
                   widget.trailingExtra!,
                 ],
-                const SizedBox(width: 8),
-                if (!_isSearching) ...[
-                  _HoverIconButton(
-                    key: const ValueKey('open_search_btn'),
-                    icon: Icons.search_rounded,
-                    tooltip: 'Cari',
-                    onPressed: _openSearch,
-                  ),
-                ] else ...[
-                  _HoverIconButton(
-                    key: const ValueKey('close_search_btn'),
-                    icon: Icons.close_rounded,
-                    tooltip: 'Tutup Pencarian',
-                    onPressed: _closeSearch,
+                if (widget.showActions) ...[
+                  const SizedBox(width: 8),
+                  if (!_isSearching) ...[
+                    _HoverIconButton(
+                      key: const ValueKey('open_search_btn'),
+                      icon: Icons.search_rounded,
+                      tooltip: 'Cari',
+                      onPressed: _openSearch,
+                    ),
+                  ] else ...[
+                    _HoverIconButton(
+                      key: const ValueKey('close_search_btn'),
+                      icon: Icons.close_rounded,
+                      tooltip: 'Tutup Pencarian',
+                      onPressed: _closeSearch,
+                    ),
+                  ],
+                  const SizedBox(width: 6),
+                  _NotificationButton(
+                    onPressed: () {
+                      if (widget.onNotificationPressed != null) {
+                        widget.onNotificationPressed!();
+                      } else {
+                        _showNotificationSheet(context);
+                      }
+                    },
                   ),
                 ],
-                const SizedBox(width: 6),
-                _NotificationButton(
-                  onPressed: () {
-                    if (widget.onNotificationPressed != null) {
-                      widget.onNotificationPressed!();
-                    } else {
-                      _showNotificationSheet(context);
-                    }
-                  },
-                ),
                 const SizedBox(width: 2),
               ],
             ),

@@ -317,6 +317,7 @@ class _ProfilPageState extends State<ProfilPage> {
       backgroundColor: const Color(0xFFF8F9FA),
       appBar: const CustomAppBar(
         title: 'Profil',
+        showActions: false,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),

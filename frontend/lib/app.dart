@@ -1,6 +1,6 @@
 import "package:flutter/material.dart";
 
-import "shell.dart";
+import "mobile_shell.dart";
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -29,7 +29,7 @@ class MyApp extends StatelessWidget {
           child: child!,
         );
       },
-      home: const MainShell(),
+      home: const MobileShell(),
     );
   }
 }

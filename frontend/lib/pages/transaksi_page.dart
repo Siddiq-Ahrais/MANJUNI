@@ -157,6 +157,7 @@ class _TransaksiPageState extends State<TransaksiPage> {
       backgroundColor: const Color(0xFFF8F9FA),
       appBar: CustomAppBar(
         title: 'Transaksi',
+        showActions: false,
         searchHint: 'Cari invoice, pelanggan, atau produk...',
         onSearchChanged: (q) => setState(() => _searchQuery = q),
         onSearchClosed: () => setState(() => _searchQuery = ''),

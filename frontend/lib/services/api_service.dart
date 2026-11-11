@@ -9,7 +9,7 @@ class ApiService {
   static final ValueNotifier<String?> lastErrorNotifier = ValueNotifier<String?>(null);
   static final ValueNotifier<int> dataChangedNotifier = ValueNotifier<int>(0); // Triggers UI refresh across tabs
 
-  // Fallback initial products (empty for guest mode)
+  // Fallback initial products
   static final List<Map<String, dynamic>> _fallbackProducts = [];
 
   // Fallback initial transactions (empty for guest mode)
@@ -80,7 +80,20 @@ class ApiService {
     required int price,
     required int stock,
     required String unit,
+    String? category,
+    int? costPrice,
+    int? minStock,
+    String? barcode,
+    String? weight, // Tambahan berat
   }) async {
+    final effectiveCategory = (category != null && category.trim().isNotEmpty)
+        ? category.trim()
+        : 'Umum';
+    final effectiveMinStock = minStock ?? 5;
+    final effectiveCostPrice = costPrice ?? (price > 0 ? (price * 0.8).toInt() : 0);
+    final effectiveBarcode = barcode?.trim() ?? '';
+    final effectiveWeight = weight?.trim() ?? '';
+
     try {
       final uri = Uri.parse(ApiConfig.produkUrl);
       final res = await http
@@ -90,30 +103,50 @@ class ApiService {
             body: jsonEncode({
               'name': name,
               'price': price,
+              'selling_price': price,
+              'cost_price': effectiveCostPrice,
               'stock': stock,
+              'min_stock': effectiveMinStock,
               'unit': unit,
+              'category': effectiveCategory,
+              'jenis': effectiveCategory,
+              'barcode': effectiveBarcode,
+              'weight': effectiveWeight,
             }),
           )
           .timeout(const Duration(seconds: 4));
 
-      if (res.statusCode == 200) {
+      if (res.statusCode == 200 || res.statusCode == 201) {
         isConnectedNotifier.value = true;
-        return true;
       }
     } catch (_) {
       isConnectedNotifier.value = false;
     }
 
-    // Jika offline, simpan ke memori lokal
+    // Selalu simpan ke fallback lokal juga agar instan muncul di UI
     _fallbackProducts.insert(0, {
-      'id': _fallbackProducts.length + 1,
+      'id': DateTime.now().millisecondsSinceEpoch,
       'name': name,
       'price': price,
+      'selling_price': price,
+      'cost_price': effectiveCostPrice,
       'stock': stock,
+      'min_stock': effectiveMinStock,
       'unit': unit,
-      'low': stock <= 5,
+      'category': effectiveCategory,
+      'jenis': effectiveCategory,
+      'barcode': effectiveBarcode,
+      'weight': effectiveWeight,
+      'low': stock <= effectiveMinStock,
     });
     dataChangedNotifier.value++; // Notify UI to refresh
+    return true;
+  }
+
+  /// Hapus produk dari daftar
+  static Future<bool> deleteProduct(dynamic id) async {
+    _fallbackProducts.removeWhere((p) => p['id'] == id || p['name'] == id);
+    dataChangedNotifier.value++;
     return true;
   }
 
