@@ -132,12 +132,12 @@ class _ProfilPageState extends State<ProfilPage> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Pengaturan Server Localhost',
+                                'Pengaturan Server Laravel',
                                 style: TextStyle(
                                     fontWeight: FontWeight.bold, fontSize: 16),
                               ),
                               Text(
-                                'Konfigurasi target koneksi backend PHP / MySQL',
+                                'Konfigurasi target koneksi backend Laravel 11 REST API',
                                 style: TextStyle(fontSize: 12, color: Colors.grey),
                               ),
                             ],
@@ -176,7 +176,7 @@ class _ProfilPageState extends State<ProfilPage> {
                                       style: TextStyle(
                                           fontWeight: FontWeight.bold, fontSize: 14)),
                                   Text(
-                                      'Menggunakan http://10.0.2.2/api_warung (Emulator)',
+                                      'Menggunakan http://10.0.2.2:8000/api/v1 (Emulator)',
                                       style: TextStyle(
                                           fontSize: 11, color: Colors.grey)),
                                 ],
@@ -276,7 +276,7 @@ class _ProfilPageState extends State<ProfilPage> {
                                   Text('Windows Desktop / Web Browser',
                                       style: TextStyle(
                                           fontWeight: FontWeight.bold, fontSize: 14)),
-                                  Text('Menggunakan http://127.0.0.1/api_warung',
+                                  Text('Menggunakan http://127.0.0.1:8000/api/v1',
                                       style: TextStyle(
                                           fontSize: 11, color: Colors.grey)),
                                 ],
