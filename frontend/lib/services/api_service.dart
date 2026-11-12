@@ -9,6 +9,16 @@ class ApiService {
   static final ValueNotifier<String?> lastErrorNotifier = ValueNotifier<String?>(null);
   static final ValueNotifier<int> dataChangedNotifier = ValueNotifier<int>(0); // Triggers UI refresh across tabs
   static final ValueNotifier<Map<String, dynamic>?> userNotifier = ValueNotifier<Map<String, dynamic>?>(null);
+  // Status otentikasi: true = sudah login (punya token), false = tampilkan LoginPage
+  static final ValueNotifier<bool> authStateNotifier = ValueNotifier<bool>(false);
+
+  /// Token tidak lagi valid (respons 401) -> reset status login agar
+  /// AuthGate otomatis mengembalikan user ke halaman login.
+  static void _handleUnauthorized() {
+    ApiConfig.token = null;
+    userNotifier.value = null;
+    authStateNotifier.value = false;
+  }
 
   // Fallback data memori lokal (untuk offline mode & widget test)
   static final List<Map<String, dynamic>> _fallbackProducts = [];
@@ -21,6 +31,7 @@ class ApiService {
     _fallbackCustomers.clear();
     ApiConfig.token = null;
     userNotifier.value = null;
+    authStateNotifier.value = false;
     dataChangedNotifier.value++;
   }
 
@@ -97,6 +108,7 @@ class ApiService {
         userNotifier.value = body['user'] is Map ? Map<String, dynamic>.from(body['user'] as Map) : null;
         isConnectedNotifier.value = true;
         lastErrorNotifier.value = null;
+        authStateNotifier.value = true; // Sukses login -> tampilkan shell utama
         dataChangedNotifier.value++;
         return {'success': true, 'data': body};
       } else {
@@ -142,6 +154,7 @@ class ApiService {
         ApiConfig.token = body['token'].toString();
         userNotifier.value = body['user'] is Map ? Map<String, dynamic>.from(body['user'] as Map) : null;
         isConnectedNotifier.value = true;
+        authStateNotifier.value = true; // Sukses registrasi -> langsung masuk
         dataChangedNotifier.value++;
         return {'success': true, 'data': body};
       } else {
@@ -162,6 +175,7 @@ class ApiService {
     } catch (_) {}
     ApiConfig.token = null;
     userNotifier.value = null;
+    authStateNotifier.value = false; // Logout -> kembali ke halaman login
     dataChangedNotifier.value++;
   }
 
@@ -210,6 +224,12 @@ class ApiService {
           return mapped;
         }
       }
+
+      if (res.statusCode == 401) {
+        // Token tidak ada / kedaluwarsa -> kembali ke halaman login
+        _handleUnauthorized();
+        return List<Map<String, dynamic>>.from(_fallbackProducts);
+      }
     } catch (_) {
       isConnectedNotifier.value = false;
     }
@@ -236,6 +256,26 @@ class ApiService {
 
     try {
       final uri = Uri.parse(ApiConfig.productsUrl);
+
+      // Petakan nama kategori pilihan user ke ID kategori di backend Laravel
+      int? categoryId;
+      try {
+        final catRes = await http
+            .get(Uri.parse(ApiConfig.categoriesUrl), headers: ApiConfig.defaultHeaders)
+            .timeout(const Duration(seconds: 4));
+        if (catRes.statusCode == 200) {
+          final catBody = jsonDecode(catRes.body);
+          final List cats = catBody is List ? catBody : ((catBody['data'] as List?) ?? []);
+          for (final c in cats) {
+            if (c is Map &&
+                (c['name']?.toString().toLowerCase() == effectiveCategory.toLowerCase())) {
+              categoryId = (c['id'] as num?)?.toInt();
+              break;
+            }
+          }
+        }
+      } catch (_) {}
+
       final payload = {
         'name': name.trim(),
         'unit': unit.trim(),
@@ -244,6 +284,7 @@ class ApiService {
         'price': price,
         'stock': stock,
         'min_stock': effectiveMinStock,
+        'category_id': ?categoryId,
         if (effectiveBarcode.isNotEmpty) 'barcode': effectiveBarcode,
       };
 
@@ -345,6 +386,11 @@ class ApiService {
             };
           }).toList();
         }
+      }
+
+      if (res.statusCode == 401) {
+        _handleUnauthorized();
+        return List<Map<String, dynamic>>.from(_fallbackTransactions);
       }
     } catch (_) {
       isConnectedNotifier.value = false;
@@ -496,6 +542,10 @@ class ApiService {
             'raw': body,
           };
         }
+      }
+
+      if (res.statusCode == 401) {
+        _handleUnauthorized();
       }
     } catch (_) {
       isConnectedNotifier.value = false;

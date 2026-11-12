@@ -1,6 +1,8 @@
 import "package:flutter/material.dart";
 
 import "mobile_shell.dart";
+import "pages/login_page.dart";
+import "services/api_service.dart";
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -29,8 +31,26 @@ class MyApp extends StatelessWidget {
           child: child!,
         );
       },
-      home: const MobileShell(),
+      home: const AuthGate(),
     );
   }
 }
 
+/// Gerbang otentikasi:
+/// - Belum punya token (belum login / token kedaluwarsa) -> LoginPage
+/// - Sudah login -> MobileShell
+/// Status login bersifat reaktif via ApiService.authStateNotifier,
+/// sehingga logout maupun 401 otomatis mengembalikan user ke halaman login.
+class AuthGate extends StatelessWidget {
+  const AuthGate({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: ApiService.authStateNotifier,
+      builder: (context, isLoggedIn, _) {
+        return isLoggedIn ? const MobileShell() : const LoginPage();
+      },
+    );
+  }
+}
