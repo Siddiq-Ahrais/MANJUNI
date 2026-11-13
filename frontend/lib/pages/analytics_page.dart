@@ -109,6 +109,8 @@ class _AnalyticsViewState extends State<AnalyticsView> {
     return '$v';
   }
 
+  String _formatSold(int v) => '$v terjual';
+
   Map<String, dynamic> get _summary =>
       ((_profitLoss['summary'] as Map?) ?? {}).cast<String, dynamic>();
 
@@ -148,7 +150,9 @@ class _AnalyticsViewState extends State<AnalyticsView> {
     for (final row in raw) {
       if (row is Map) {
         final d = row['date']?.toString() ?? '';
-        if (d.isNotEmpty) totals[d] = _intOf(row['total']);
+        if (d.isNotEmpty) {
+          totals[d] = _intOf(row['sold'], _intOf(row['total']));
+        }
       }
     }
     const dayNames = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
@@ -168,7 +172,9 @@ class _AnalyticsViewState extends State<AnalyticsView> {
     for (final row in raw) {
       if (row is Map) {
         final m = row['month']?.toString() ?? '';
-        if (m.isNotEmpty) totals[m] = _intOf(row['total']);
+        if (m.isNotEmpty) {
+          totals[m] = _intOf(row['sold'], _intOf(row['total']));
+        }
       }
     }
     const monthNames = [
@@ -472,14 +478,25 @@ class _AnalyticsViewState extends State<AnalyticsView> {
   }
 
   // ─────────────────────────────────────────────
-  // 3. DIAGRAM GARIS: TREN PENJUALAN
+  // 3. DIAGRAM GARIS: TREN PENJUALAN (PRODUK TERJUAL PER HARI)
   // ─────────────────────────────────────────────
   Widget _buildTrendCard() {
     final series = _buildSeries();
+    int peakIndex = -1;
+    int maxSold = 0;
+    for (int i = 0; i < series.length; i++) {
+      if (series[i].value > maxSold) {
+        maxSold = series[i].value;
+        peakIndex = i;
+      }
+    }
+    final activePoint = _selectedPoint >= 0 ? _selectedPoint : peakIndex;
+
     return _sectionCard(
       title: 'Tren Penjualan',
-      subtitle: 'Periode $_selectedTrend',
+      subtitle: 'Periode $_selectedTrend • Produk Terjual',
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Pilih periode
           Row(
@@ -491,6 +508,32 @@ class _AnalyticsViewState extends State<AnalyticsView> {
               _trendChip('6 Bulan'),
             ],
           ),
+          if (peakIndex >= 0) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE8F5E9),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.local_fire_department_rounded,
+                      size: 14, color: kGreen),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Terbanyak: ${series[peakIndex].label} (${_formatSold(series[peakIndex].value)})',
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: kGreen,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           LayoutBuilder(
             builder: (context, constraints) {
@@ -510,8 +553,8 @@ class _AnalyticsViewState extends State<AnalyticsView> {
                   child: CustomPaint(
                     painter: _TrendLinePainter(
                       points: series,
-                      selectedIndex: _selectedPoint,
-                      formatValue: _shortRp,
+                      selectedIndex: activePoint,
+                      formatValue: _formatSold,
                     ),
                   ),
                 ),
@@ -530,8 +573,8 @@ class _AnalyticsViewState extends State<AnalyticsView> {
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: series.length <= 8 ? 11 : 9,
-                    fontWeight: _selectedPoint == i ? FontWeight.bold : FontWeight.w500,
-                    color: _selectedPoint == i ? kGreen : const Color(0xFF4B5563),
+                    fontWeight: activePoint == i ? FontWeight.bold : FontWeight.w500,
+                    color: activePoint == i ? kGreen : const Color(0xFF4B5563),
                   ),
                 ),
               );

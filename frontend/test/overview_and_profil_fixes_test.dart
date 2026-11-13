@@ -36,6 +36,13 @@ void main() {
     // P2 - Delete: Verify 3-line menu button is deleted from Overview tab
     expect(find.byIcon(Icons.menu), findsNothing);
 
+    // Level & dollar ($) icon under Selamat Datang! removed, and revenue uses Rp
+    expect(find.text('Level 12'), findsNothing);
+    expect(find.text('2,564'), findsNothing);
+    expect(find.byIcon(Icons.monetization_on), findsNothing);
+    expect(find.byIcon(Icons.monetization_on_outlined), findsNothing);
+    expect(find.text('Rp'), findsOneWidget);
+
     // P4 - Update: Tap profile avatar/section in overview header links to Profile page (index 4)
     expect(NavigationService.selectedIndex.value, 0);
     await tester.tap(find.byIcon(Icons.person_rounded));

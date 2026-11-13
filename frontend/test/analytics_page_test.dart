@@ -91,4 +91,40 @@ void main() {
     expect(find.text('Tren Penjualan'), findsOneWidget);
     expect(find.textContaining('Periode 30 Hari'), findsOneWidget);
   });
+
+  testWidgets('Sales trend tracks product sold quantity rather than IDR amount',
+      (WidgetTester tester) async {
+    await ApiService.addProduct(
+      name: 'Kopi Sachet',
+      price: 1000,
+      stock: 50,
+      unit: 'pcs',
+      category: 'Minuman',
+    );
+    await ApiService.createTransaction(
+      cartItems: [
+        {'name': 'Kopi Sachet', 'qty': 7, 'price': 1000},
+      ],
+      itemsSummary: '7 Kopi Sachet',
+      paymentMethod: 'Tunai',
+      totalAmount: 7000,
+    );
+
+    final trends = await ApiService.getSalesTrends();
+    final trend7 = trends['trend7'] as List;
+    expect(trend7, isNotEmpty);
+    expect(trend7.last['sold'], 7);
+    expect(trend7.last['total'], 7);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: AnalyticsPage(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle(const Duration(seconds: 6));
+
+    expect(find.textContaining('7 terjual'), findsOneWidget);
+  });
 }

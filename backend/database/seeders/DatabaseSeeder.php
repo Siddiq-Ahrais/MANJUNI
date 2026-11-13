@@ -5,7 +5,6 @@ namespace Database\Seeders;
 use App\Models\Business;
 use App\Models\CapitalEntry;
 use App\Models\Category;
-use App\Models\Expense;
 use App\Models\Plan;
 use App\Models\Product;
 use App\Models\StockMovement;
@@ -175,18 +174,7 @@ class DatabaseSeeder extends Seeder
             'note'        => 'Pembelian mesin kopi dan perlengkapan awal toko',
         ]);
 
-        // 7. Contoh Biaya Operasional (Expenses)
-        Expense::create([
-            'business_id'  => $business->id,
-            'user_id'      => $owner->id,
-            'expense_date' => now()->subDays(5),
-            'category'     => 'Listrik & Air',
-            'amount'       => 350000,
-            'note'         => 'Tagihan token PLN toko',
-            'status'       => 'completed',
-        ]);
-
-        // 8. Contoh Rencana Target Usaha (Plans)
+        // 7. Contoh Rencana Target Usaha (Plans)
         Plan::create([
             'business_id'   => $business->id,
             'user_id'       => $owner->id,

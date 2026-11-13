@@ -46,6 +46,60 @@ class CartService {
   static int get typesCount => cartNotifier.value.length;
   static int get subtotal => cartNotifier.value.fold(0, (sum, item) => sum + item.price * item.qty);
 
+  static bool _matchesProduct(CartItem item, {dynamic productId, required String name}) {
+    if (productId != null && item.productId != null) {
+      if (item.productId.toString() == productId.toString()) return true;
+    }
+    return item.name.trim().toLowerCase() == name.trim().toLowerCase();
+  }
+
+  /// Jumlah kuantitas produk tertentu yang sedang berada di keranjang.
+  static int qtyForProduct({dynamic productId, required String name}) {
+    return cartNotifier.value
+        .where((item) => _matchesProduct(item, productId: productId, name: name))
+        .fold<int>(0, (sum, item) => sum + item.qty);
+  }
+
+  /// Sinkronkan batas stok (`maxStock`) item keranjang terhadap daftar produk terbaru.
+  static void syncStockLimits(List<Map<String, dynamic>> products) {
+    if (cartNotifier.value.isEmpty || products.isEmpty) return;
+    bool changed = false;
+    final updated = cartNotifier.value.map((item) {
+      final match = products.firstWhere(
+        (p) {
+          final pId = p['id'];
+          if (pId != null && item.productId != null && pId.toString() == item.productId.toString()) {
+            return true;
+          }
+          return (p['name']?.toString().trim().toLowerCase() ?? '') ==
+              item.name.trim().toLowerCase();
+        },
+        orElse: () => <String, dynamic>{},
+      );
+      if (match.isNotEmpty && match['stock'] != null) {
+        final int latestStock = (match['stock'] as num).toInt();
+        if (item.maxStock != latestStock) {
+          changed = true;
+          return CartItem(
+            productId: match['id'] ?? item.productId,
+            name: item.name,
+            price: item.price,
+            costPrice: item.costPrice,
+            unit: item.unit,
+            maxStock: latestStock,
+            image: item.image,
+            category: item.category,
+            qty: item.qty,
+          );
+        }
+      }
+      return item;
+    }).toList();
+    if (changed) {
+      cartNotifier.value = updated;
+    }
+  }
+
   /// Menambahkan item ke keranjang dengan validasi stok.
   /// Mengembalikan `false` jika stok habis atau jumlah melebihi `maxStock`.
   static bool addItem(
@@ -62,9 +116,12 @@ class CartService {
       return false;
     }
 
+    final normalizedName = name.trim();
     final normalizedUnit = unit.trim().isNotEmpty ? unit.trim() : 'pcs';
     final list = List<CartItem>.from(cartNotifier.value);
-    final idx = list.indexWhere((item) => item.name.toLowerCase() == name.toLowerCase());
+    final idx = list.indexWhere(
+      (item) => _matchesProduct(item, productId: productId, name: normalizedName),
+    );
     if (idx != -1) {
       final effectiveMax = maxStock ?? list[idx].maxStock;
       if (effectiveMax != null && list[idx].qty + 1 > effectiveMax) {
@@ -84,7 +141,7 @@ class CartService {
     } else {
       list.add(CartItem(
         productId: productId,
-        name: name,
+        name: normalizedName,
         price: price,
         costPrice: costPrice,
         unit: normalizedUnit,

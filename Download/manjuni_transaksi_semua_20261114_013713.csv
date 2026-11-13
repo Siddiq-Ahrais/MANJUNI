@@ -1,0 +1,9 @@
+sep=,
+id_transaksi,waktu_transaksi,jenis_pembayaran,nama_produk,qty,harga_satuan_idr,total_transaksi_idr
+"TRX-04","2026-11-14 01:36","Tunai","Roti Bakar Coklat Keju",5,14000,70000
+"TRX-03","2026-11-14 01:36","Tunai","Roti Bakar Coklat Keju",16,14000,276500
+"TRX-03","2026-11-14 01:36","Tunai","Minyak Goreng Sania 1L",3,17500,276500
+"TRX-02","2026-11-14 01:34","Tunai","Kopi Arabika Tubruk",1,15000,141000
+"TRX-02","2026-11-14 01:34","Tunai","Roti Bakar Coklat Keju",9,14000,141000
+"TRX-01","2026-11-13 23:22","Tunai","Kopi Arabika Tubruk",1,15000,20000
+"TRX-01","2026-11-13 23:22","Tunai","Teh Botol Sosro 250ml",1,5000,20000

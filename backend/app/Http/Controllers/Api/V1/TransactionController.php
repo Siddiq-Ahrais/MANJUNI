@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\StockMovement;
 use App\Models\Transaction;
+use App\Models\TransactionItem;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -268,5 +269,31 @@ class TransactionController extends Controller
         });
 
         return response()->json($transaction);
+    }
+
+    public function reset(Request $request)
+    {
+        $businessId = $request->user()->business_id;
+
+        $deletedCount = DB::transaction(function () use ($businessId) {
+            $txIds = Transaction::where('business_id', $businessId)->pluck('id');
+            if ($txIds->isEmpty()) {
+                return 0;
+            }
+
+            $itemIds = TransactionItem::whereIn('transaction_id', $txIds)->pluck('id');
+            if ($itemIds->isNotEmpty()) {
+                StockMovement::whereIn('transaction_item_id', $itemIds)
+                    ->update(['transaction_item_id' => null]);
+                TransactionItem::whereIn('id', $itemIds)->delete();
+            }
+
+            return Transaction::whereIn('id', $txIds)->delete();
+        });
+
+        return response()->json([
+            'message' => 'Riwayat transaksi berhasil dikosongkan.',
+            'deleted' => $deletedCount,
+        ]);
     }
 }

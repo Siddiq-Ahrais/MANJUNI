@@ -54,6 +54,8 @@ Route::prefix('v1')->group(function () {
 
             // Transactions (Kasir & Pemilik)
             Route::get('/transactions', [TransactionController::class, 'index']);
+            Route::post('/transactions/reset', [TransactionController::class, 'reset']);
+            Route::delete('/transactions', [TransactionController::class, 'reset']);
             Route::get('/transactions/{transaction}', [TransactionController::class, 'show']);
             Route::post('/transactions', [TransactionController::class, 'store']);
             Route::post('/transactions/{transaction}/confirm', [TransactionController::class, 'confirm']);

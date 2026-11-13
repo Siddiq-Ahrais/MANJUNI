@@ -1,4 +1,4 @@
-import 'dart:io' show Directory, File;
+import 'dart:io' show Directory, File, Platform;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -87,113 +87,217 @@ class _ProfilPageState extends State<ProfilPage> {
     });
   }
 
+  static const MethodChannel _exportChannel =
+      MethodChannel('com.example.majunih/file_export');
+
+  Future<String> _saveCsvToDownloads(String fileName, String csvData) async {
+    if (!kIsWeb && Platform.isAndroid) {
+      final savedPath = await _exportChannel.invokeMethod<String>(
+        'saveCsvToDownloads',
+        {
+          'fileName': fileName,
+          'content': csvData,
+        },
+      );
+      if (savedPath != null && savedPath.isNotEmpty) {
+        return savedPath;
+      }
+    }
+
+    Directory? targetDir;
+    if (Platform.environment['FLUTTER_TEST'] != 'true') {
+      final homeDir = Platform.isWindows
+          ? Platform.environment['USERPROFILE']
+          : Platform.environment['HOME'];
+      if (homeDir != null && homeDir.isNotEmpty) {
+        final sep = Platform.pathSeparator;
+        final downloadsDir = Directory('$homeDir${sep}Downloads');
+        if (await downloadsDir.exists()) {
+          targetDir = downloadsDir;
+        }
+      }
+    }
+    targetDir ??= Directory.systemTemp;
+    final sep = Platform.pathSeparator;
+    final file = File('${targetDir.path}$sep$fileName');
+    await file.writeAsString(csvData);
+    return file.path;
+  }
+
   Future<void> _showExportTransactionsDialog() async {
     final transactions = await ApiService.getTransactions();
-    final csvData = ApiService.buildTransactionsExportCsv(transactions);
     if (!mounted) return;
+
+    const periodOptions = <(String, String)>[
+      ('semua', 'Semua'),
+      ('minggu', 'Perminggu'),
+      ('bulan', 'Bulan'),
+      ('tahun', 'Tahun'),
+    ];
+    String selectedPeriod = 'semua';
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: const Row(
-          children: [
-            Icon(Icons.download_rounded, color: kGreen),
-            SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Cadangkan Data Transaksi',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-            ),
-          ],
-        ),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Total ${transactions.length} transaksi siap diekspor (ID, Waktu, Jenis Pembayaran, Harga Satuan Produk, Total IDR).',
-                style: const TextStyle(fontSize: 12.5, color: Color(0xFF4B5563)),
-              ),
-              const SizedBox(height: 10),
-              Container(
-                constraints: const BoxConstraints(maxHeight: 180),
-                width: double.infinity,
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF3F4F6),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFFE5E7EB)),
-                ),
-                child: SingleChildScrollView(
-                  child: SelectableText(
-                    csvData,
-                    style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          final filteredTransactions = ApiService.filterTransactionsByPeriod(
+            transactions,
+            selectedPeriod,
+          );
+          final csvData = ApiService.buildTransactionsExportCsv(filteredTransactions);
+          final periodLabel = periodOptions
+              .firstWhere((e) => e.$1 == selectedPeriod, orElse: () => ('semua', 'Semua'))
+              .$2;
+
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+            title: const Row(
+              children: [
+                Icon(Icons.download_rounded, color: kGreen),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Cadangkan Data Transaksi',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Tutup', style: TextStyle(color: Colors.grey)),
-          ),
-          OutlinedButton.icon(
-            onPressed: () async {
-              await Clipboard.setData(ClipboardData(text: csvData));
-              if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Data CSV transaksi berhasil disalin ke clipboard!'),
-                  backgroundColor: kGreen,
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
-            },
-            icon: const Icon(Icons.copy_rounded, size: 16),
-            label: const Text('Salin CSV'),
-          ),
-          if (!kIsWeb)
-            ElevatedButton.icon(
-              onPressed: () async {
-                try {
-                  final ts = DateTime.now().millisecondsSinceEpoch;
-                  final file = File('${Directory.systemTemp.path}/manjuni_transaksi_$ts.csv');
-                  await file.writeAsString(csvData);
-                  if (!ctx.mounted || !mounted) return;
-                  Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Backup CSV tersimpan di: ${file.path}'),
-                      backgroundColor: kGreen,
-                      behavior: SnackBarBehavior.floating,
-                      duration: const Duration(seconds: 3),
+              ],
+            ),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Pilih periode data:',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF374151),
                     ),
-                  );
-                } catch (e) {
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: periodOptions.map((opt) {
+                      final key = opt.$1;
+                      final label = opt.$2;
+                      final isSelected = selectedPeriod == key;
+                      return GestureDetector(
+                        onTap: () {
+                          if (selectedPeriod == key) return;
+                          setDialogState(() => selectedPeriod = key);
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? const Color(0xFFE8F5E9)
+                                : const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: isSelected ? kGreen : const Color(0xFFE2E8F0),
+                            ),
+                          ),
+                          child: Text(
+                            label,
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                              color: isSelected ? kGreen : const Color(0xFF475569),
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Total ${filteredTransactions.length} transaksi ($periodLabel) siap diekspor (ID, Waktu, Jenis Pembayaran, Harga Satuan Produk, Total IDR).',
+                    style: const TextStyle(fontSize: 12.5, color: Color(0xFF4B5563)),
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
+                    constraints: const BoxConstraints(maxHeight: 160),
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF3F4F6),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFE5E7EB)),
+                    ),
+                    child: SingleChildScrollView(
+                      child: SelectableText(
+                        csvData,
+                        style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Tutup', style: TextStyle(color: Colors.grey)),
+              ),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  await Clipboard.setData(ClipboardData(text: csvData));
                   if (!mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Gagal menyimpan file: $e'),
-                      backgroundColor: Colors.redAccent,
+                    const SnackBar(
+                      content: Text('Data CSV transaksi berhasil disalin ke clipboard!'),
+                      backgroundColor: kGreen,
                       behavior: SnackBarBehavior.floating,
                     ),
                   );
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: kGreen,
-                foregroundColor: Colors.white,
+                },
+                icon: const Icon(Icons.copy_rounded, size: 16),
+                label: const Text('Salin CSV'),
               ),
-              icon: const Icon(Icons.save_alt_rounded, size: 16),
-              label: const Text('Simpan CSV'),
-            ),
-        ],
+              if (!kIsWeb)
+                ElevatedButton.icon(
+                  onPressed: () async {
+                    try {
+                      final now = DateTime.now();
+                      final stamp =
+                          '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}';
+                      final fileName = 'manjuni_transaksi_${selectedPeriod}_$stamp.csv';
+                      final savedPath = await _saveCsvToDownloads(fileName, csvData);
+                      if (!ctx.mounted || !mounted) return;
+                      Navigator.pop(ctx);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Backup CSV tersimpan di: $savedPath'),
+                          backgroundColor: kGreen,
+                          behavior: SnackBarBehavior.floating,
+                          duration: const Duration(seconds: 4),
+                        ),
+                      );
+                    } catch (e) {
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Gagal menyimpan file: $e'),
+                          backgroundColor: Colors.redAccent,
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: kGreen,
+                    foregroundColor: Colors.white,
+                  ),
+                  icon: const Icon(Icons.save_alt_rounded, size: 16),
+                  label: const Text('Simpan CSV'),
+                ),
+            ],
+          );
+        },
       ),
     );
   }

@@ -211,4 +211,85 @@ class DashboardAndReportTest extends TestCase
             ->assertJsonPath('cash_out.total_cash_out', 35000)
             ->assertJsonPath('net_cash_flow', 90000);
     }
+
+    public function test_sales_trend_uses_sold_quantity_not_revenue_idr(): void
+    {
+        $this->travelTo(now()->startOfMonth()->addDays(5)->setHour(12));
+
+        $expensiveProduct = Product::create([
+            'business_id' => $this->business->id,
+            'name' => 'Paket Mesin Kopi',
+            'unit' => 'unit',
+            'cost_price' => 300000,
+            'selling_price' => 500000,
+            'stock' => 10,
+            'min_stock' => 1,
+            'is_active' => true,
+        ]);
+
+        // Kemarin: 1 produk mahal = Rp500.000 (revenue tinggi, sold sedikit = 1)
+        $yesterday = now()->subDay();
+        $txYesterday = Transaction::create([
+            'business_id' => $this->business->id,
+            'user_id' => $this->cashier->id,
+            'transaction_date' => $yesterday,
+            'total_amount' => 500000,
+            'payment_method' => 'cash',
+            'status' => 'completed',
+            'paid_at' => $yesterday,
+        ]);
+        $txYesterday->items()->create([
+            'product_id' => $expensiveProduct->id,
+            'item_name' => $expensiveProduct->name,
+            'quantity' => 1,
+            'unit_price' => 500000,
+            'cost_price' => 300000,
+            'subtotal' => 500000,
+        ]);
+
+        // Hari ini: 6 produk murah = Rp60.000 (revenue lebih rendah, sold terbanyak = 6)
+        $today = now();
+        $txToday = Transaction::create([
+            'business_id' => $this->business->id,
+            'user_id' => $this->cashier->id,
+            'transaction_date' => $today,
+            'total_amount' => 60000,
+            'payment_method' => 'qris',
+            'status' => 'completed',
+            'paid_at' => $today,
+        ]);
+        $txToday->items()->create([
+            'product_id' => $this->product->id,
+            'item_name' => $this->product->name,
+            'quantity' => 6,
+            'unit_price' => 10000,
+            'cost_price' => 4000,
+            'subtotal' => 60000,
+        ]);
+
+        $res = $this->actingAs($this->owner, 'sanctum')
+            ->getJson('/api/v1/dashboard/summary')
+            ->assertOk();
+
+        $trend7 = collect($res->json('sales_trend.last_7_days'));
+        $yesterdayRow = $trend7->firstWhere('date', $yesterday->toDateString());
+        $todayRow = $trend7->firstWhere('date', $today->toDateString());
+
+        $this->assertNotNull($yesterdayRow);
+        $this->assertNotNull($todayRow);
+        $this->assertSame(1, $yesterdayRow['total']);
+        $this->assertSame(1, $yesterdayRow['sold']);
+        $this->assertSame(500000, $yesterdayRow['revenue']);
+
+        $this->assertSame(6, $todayRow['total']);
+        $this->assertSame(6, $todayRow['sold']);
+        $this->assertSame(60000, $todayRow['revenue']);
+        $this->assertGreaterThan($yesterdayRow['sold'], $todayRow['sold']);
+
+        $monthlyRow = collect($res->json('sales_trend.monthly'))
+            ->firstWhere('month', $today->format('Y-m'));
+        $this->assertNotNull($monthlyRow);
+        $this->assertSame(7, $monthlyRow['sold']);
+        $this->assertSame(7, $monthlyRow['total']);
+    }
 }

@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:majunih/pages/keranjang_page.dart';
+import 'package:majunih/services/api_service.dart';
 import 'package:majunih/services/cart_service.dart';
 import 'package:majunih/widgets/qris_payment_dialog.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   setUp(() {
+    SharedPreferences.setMockInitialValues({});
+    ApiService.resetAllData();
     CartService.clear();
   });
 
@@ -156,7 +160,7 @@ void main() {
     expect(capturedMethod, contains('GoPay'));
   });
 
-  testWidgets('KeranjangPage QRIS mode shows QRIS banner and opens QRIS dialog on checkout',
+  testWidgets('KeranjangPage QRIS option records transaction as QRIS on Simpan without opening payment dialog',
       (WidgetTester tester) async {
     tester.view.physicalSize = const Size(800, 1400);
     tester.view.devicePixelRatio = 1.0;
@@ -174,21 +178,23 @@ void main() {
     CartService.addItem('Kopi Robusta 250g', 35000, 'bungkus');
     await tester.pump(const Duration(milliseconds: 200));
 
-    // Select QRIS payment method (index 1)
+    // Select QRIS recording option (index 1)
     await tester.tap(find.text('QRIS'));
     await tester.pump(const Duration(milliseconds: 200));
 
-    // Verify QRIS quick banner appears
-    expect(find.text('Dua Metode Pembayaran QRIS Tersedia:'), findsOneWidget);
-    expect(find.text('Buka Layar QRIS & Scanner'), findsOneWidget);
-    expect(find.text('Bayar QRIS / Barcode Rp35.000'), findsOneWidget);
+    // Verify no QRIS payment banner/scanner is shown and Simpan button is ready
+    expect(find.text('Metode Pencatatan'), findsOneWidget);
+    expect(find.text('Dua Metode Pembayaran QRIS Tersedia:'), findsNothing);
+    expect(find.text('Buka Layar QRIS & Scanner'), findsNothing);
+    expect(find.text('Buka Scanner'), findsNothing);
+    expect(find.text('Simpan'), findsOneWidget);
 
-    // Tap Pay with QRIS button
-    await tester.tap(find.text('Bayar QRIS / Barcode Rp35.000'), warnIfMissed: false);
-    await tester.pump(const Duration(milliseconds: 300));
-    await tester.pump(const Duration(milliseconds: 300));
+    // Tap Simpan directly records transaction as QRIS
+    await tester.tap(find.text('Simpan'));
+    await tester.pumpAndSettle();
 
-    // Dialog appears
-    expect(find.text('Pembayaran QRIS & Barcode'), findsOneWidget);
+    expect(find.text('Transaksi Tersimpan!'), findsOneWidget);
+    expect(find.text('Total: Rp35.000 (QRIS)'), findsOneWidget);
+    expect(find.text('Pembayaran QRIS & Barcode'), findsNothing);
   });
 }

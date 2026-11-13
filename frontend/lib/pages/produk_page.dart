@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../services/api_config.dart';
 import '../services/api_service.dart';
 import '../services/cart_service.dart';
@@ -15,6 +16,8 @@ class ProdukPage extends StatefulWidget {
 
 class _ProdukPageState extends State<ProdukPage> {
   static const Color kGreen = Color(0xFF1E874B);
+  static const MethodChannel _deviceChannel =
+      MethodChannel('com.example.majunih/file_export');
   final TextEditingController _searchCtrl = TextEditingController();
   String _searchQuery = '';
   String _selectedCategory = 'Semua';
@@ -27,6 +30,7 @@ class _ProdukPageState extends State<ProdukPage> {
     _loadProducts();
     ApiConfig.baseUrlNotifier.addListener(_onUrlChanged);
     ApiService.dataChangedNotifier.addListener(_onDataChanged);
+    CartService.cartNotifier.addListener(_onCartChanged);
   }
 
   @override
@@ -34,7 +38,12 @@ class _ProdukPageState extends State<ProdukPage> {
     _searchCtrl.dispose();
     ApiConfig.baseUrlNotifier.removeListener(_onUrlChanged);
     ApiService.dataChangedNotifier.removeListener(_onDataChanged);
+    CartService.cartNotifier.removeListener(_onCartChanged);
     super.dispose();
+  }
+
+  void _onCartChanged() {
+    if (mounted) setState(() {});
   }
 
   void _onDataChanged() {
@@ -48,6 +57,7 @@ class _ProdukPageState extends State<ProdukPage> {
   Future<void> _loadProducts() async {
     setState(() => _isLoading = true);
     final data = await ApiService.getProducts();
+    CartService.syncStockLimits(data);
     if (!mounted) return;
     setState(() {
       _products = data;
@@ -85,219 +95,191 @@ class _ProdukPageState extends State<ProdukPage> {
     }).toList();
   }
 
-  int get _lowStockCount =>
-      _products.where((p) => ApiService.isLowStock(p)).length;
+  int _remainingStockFor(Map<String, dynamic> p) {
+    final int rawStock = (p['stock'] as num?)?.toInt() ?? 0;
+    final int inCart = CartService.qtyForProduct(
+      productId: p['id'],
+      name: p['name']?.toString() ?? '',
+    );
+    return (rawStock - inCart).clamp(0, rawStock);
+  }
 
-  // Galeri preset gambar produk (base64 PNG 1x1 + kode preset visual)
-  static const List<Map<String, String>> _imagePresets = [
-    {
-      'key': 'preset:beras',
-      'label': 'Beras / Sembako',
-      'base64':
-          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
-    },
-    {
-      'key': 'preset:minyak',
-      'label': 'Minyak / Cairan',
-      'base64':
-          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
-    },
-    {
-      'key': 'preset:minuman',
-      'label': 'Minuman / Kopi',
-      'base64':
-          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPj/HwADBwIAMCbHYQAAAABJRU5ErkJggg==',
-    },
-    {
-      'key': 'preset:makanan',
-      'label': 'Makanan / Snack',
-      'base64':
-          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==',
-    },
-  ];
+  int get _lowStockCount => _products
+      .where((p) => ApiService.isLowStock({...p, 'stock': _remainingStockFor(p)}))
+      .length;
 
-  /// Dialog untuk memilih / upload gambar produk (dari file perangkat, URL, atau preset galeri)
+  Future<Map<String, String>?> _pickImageFromDevice({
+    void Function(String message)? onError,
+  }) async {
+    try {
+      final picked = await _deviceChannel.invokeMapMethod<String, dynamic>('pickImage');
+      if (picked != null && (picked['base64'] as String?)?.isNotEmpty == true) {
+        return {
+          'base64': picked['base64'] as String,
+          'name': (picked['name'] as String?) ?? 'Foto Produk',
+        };
+      }
+      if (!kIsWeb && Platform.isAndroid) {
+        return null;
+      }
+    } on MissingPluginException {
+      if (!kIsWeb && Platform.isAndroid) {
+        onError?.call(
+          'Pemilih file perangkat belum aktif. Silakan build ulang aplikasi Android.',
+        );
+        return null;
+      }
+    } catch (e) {
+      onError?.call('Gagal memilih file gambar: $e');
+      return null;
+    }
+
+    if (!kIsWeb && Platform.isWindows) {
+      try {
+        final result = await Process.run('powershell', [
+          '-NoProfile',
+          '-Command',
+          "Add-Type -AssemblyName System.Windows.Forms; \$f = New-Object System.Windows.Forms.OpenFileDialog; \$f.Filter = 'Image Files (*.png;*.jpg;*.jpeg;*.webp)|*.png;*.jpg;*.jpeg;*.webp'; if (\$f.ShowDialog() -eq 'OK') { Write-Output \$f.FileName }",
+        ]);
+        final pickedPath = result.stdout.toString().trim();
+        if (pickedPath.isNotEmpty) {
+          final file = File(pickedPath);
+          if (await file.exists()) {
+            final bytes = await file.readAsBytes();
+            final ext = pickedPath.toLowerCase().endsWith('.png') ? 'png' : 'jpeg';
+            final b64 = 'data:image/$ext;base64,${base64Encode(bytes)}';
+            final fileName = pickedPath.split(RegExp(r'[\\/]')).last;
+            return {'base64': b64, 'name': fileName};
+          }
+        }
+      } catch (e) {
+        onError?.call('Gagal membuka pemilih file Windows: $e');
+      }
+    }
+    return null;
+  }
+
+  /// Dialog untuk memilih file gambar produk langsung dari folder perangkat
   Future<void> _showPickImageSheet({
     required BuildContext parentContext,
-    required String? currentImage,
     required void Function(String imageValue, String imageLabel) onPicked,
   }) async {
-    final pathCtrl = TextEditingController(
-      text: (currentImage != null && !currentImage.startsWith('data:image'))
-          ? currentImage
-          : '',
-    );
+    String? errorMsg;
 
     await showDialog(
       context: parentContext,
       builder: (dCtx) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-          title: const Row(
-            children: [
-              Icon(Icons.add_photo_alternate_rounded, color: kGreen),
-              SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Upload Gambar Produk',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
+        return StatefulBuilder(
+          builder: (dCtx, setLocalState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+              title: const Row(
+                children: [
+                  Icon(Icons.add_photo_alternate_rounded, color: kGreen),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Upload Gambar Produk',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Tombol pilih file dari perangkat (Windows native picker jika tersedia)
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () async {
-                      if (!kIsWeb && Platform.isWindows) {
-                        try {
-                          final result = await Process.run('powershell', [
-                            '-NoProfile',
-                            '-Command',
-                            "Add-Type -AssemblyName System.Windows.Forms; \$f = New-Object System.Windows.Forms.OpenFileDialog; \$f.Filter = 'Image Files (*.png;*.jpg;*.jpeg;*.webp)|*.png;*.jpg;*.jpeg;*.webp'; if (\$f.ShowDialog() -eq 'OK') { Write-Output \$f.FileName }",
-                          ]);
-                          final pickedPath = result.stdout.toString().trim();
-                          if (pickedPath.isNotEmpty) {
-                            final file = File(pickedPath);
-                            if (await file.exists()) {
-                              final bytes = await file.readAsBytes();
-                              final b64 = 'data:image/png;base64,${base64Encode(bytes)}';
-                              final fileName = pickedPath.split(RegExp(r'[\\/]')).last;
-                              if (dCtx.mounted) Navigator.pop(dCtx);
-                              onPicked(b64, fileName);
-                              return;
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Pilih file foto produk langsung dari folder di perangkat Anda.',
+                    style: TextStyle(fontSize: 12.5, color: Color(0xFF4B5563)),
+                  ),
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () async {
+                        setLocalState(() => errorMsg = null);
+                        final picked = await _pickImageFromDevice(
+                          onError: (msg) {
+                            if (dCtx.mounted) {
+                              setLocalState(() => errorMsg = msg);
                             }
-                          }
-                        } catch (_) {}
-                      }
-                      // Fallback: gunakan gambar sample produk langsung jika dialog native tidak dipakai
-                      final first = _imagePresets.first;
-                      if (dCtx.mounted) Navigator.pop(dCtx);
-                      onPicked(
-                        'data:image/png;base64,${first['base64']}',
-                        first['label']!,
-                      );
-                    },
-                    icon: const Icon(Icons.folder_open_rounded, color: kGreen, size: 18),
-                    label: const Text(
-                      'Pilih File dari Perangkat',
-                      style: TextStyle(color: kGreen, fontWeight: FontWeight.bold, fontSize: 12.5),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: kGreen),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                const Text(
-                  'Atau Pilih Cepat dari Galeri Produk:',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF374151)),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: _imagePresets.map((preset) {
-                    return ActionChip(
-                      avatar: const Icon(Icons.image_outlined, size: 16, color: kGreen),
-                      label: Text(
-                        preset['label']!,
-                        style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600),
-                      ),
-                      backgroundColor: const Color(0xFFE8F5E9),
-                      onPressed: () {
-                        Navigator.pop(dCtx);
-                        onPicked(
-                          'data:image/png;base64,${preset['base64']}',
-                          preset['label']!,
+                          },
                         );
+                        if (picked != null) {
+                          if (dCtx.mounted) Navigator.pop(dCtx);
+                          onPicked(picked['base64']!, picked['name']!);
+                        }
                       },
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 14),
-                const Text(
-                  'Atau Path File / URL Gambar:',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF374151)),
-                ),
-                const SizedBox(height: 6),
-                TextField(
-                  controller: pathCtrl,
-                  decoration: InputDecoration(
-                    hintText: 'Misal: C:/foto/beras.png atau https://...',
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                    isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      icon: const Icon(Icons.folder_open_rounded, size: 18),
+                      label: const Text(
+                        'Pilih File dari Perangkat',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: kGreen,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+                      ),
+                    ),
                   ),
+                  if (errorMsg != null) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      errorMsg!,
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        color: Colors.redAccent,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dCtx),
+                  child: const Text('Batal'),
                 ),
               ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dCtx),
-              child: const Text('Batal'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                final raw = pathCtrl.text.trim();
-                if (raw.isNotEmpty) {
-                  if (!kIsWeb && !raw.startsWith('http')) {
-                    try {
-                      final f = File(raw);
-                      if (await f.exists()) {
-                        final bytes = await f.readAsBytes();
-                        final name = raw.split(RegExp(r'[\\/]')).last;
-                        if (dCtx.mounted) Navigator.pop(dCtx);
-                        onPicked('data:image/png;base64,${base64Encode(bytes)}', name);
-                        return;
-                      }
-                    } catch (_) {}
-                  }
-                  if (dCtx.mounted) Navigator.pop(dCtx);
-                  onPicked(raw, raw.split(RegExp(r'[\\/]')).last);
-                } else {
-                  final first = _imagePresets.first;
-                  if (dCtx.mounted) Navigator.pop(dCtx);
-                  onPicked('data:image/png;base64,${first['base64']}', first['label']!);
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: kGreen,
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('Gunakan Gambar'),
-            ),
-          ],
+            );
+          },
         );
       },
     );
   }
 
-  /// Modal dialog / Bottom sheet untuk menambah produk baru lengkap dari gambar, nama, satuan, modal, harga jual, hingga jenis/kategori
-  void _showAddProductDialog() {
-    final nameCtrl = TextEditingController();
-    final weightCtrl = TextEditingController();
-    final stockCtrl = TextEditingController(text: '0');
-    final costPriceCtrl = TextEditingController();
-    final priceCtrl = TextEditingController();
+  void _showAddProductDialog() => _showProductFormDialog();
 
-    String selectedCategory = 'Umum';
-    bool isCustomCategory = false;
-    final customCategoryCtrl = TextEditingController();
+  void _showEditProductDialog(Map<String, dynamic> product) =>
+      _showProductFormDialog(existingProduct: product);
 
-    String selectedUnit = 'pcs';
-    bool unitManuallySelected = false;
-    String? selectedImage;
-    String? selectedImageLabel;
+  /// Modal dialog / Bottom sheet untuk menambah atau mengedit detail & foto produk
+  void _showProductFormDialog({Map<String, dynamic>? existingProduct}) {
+    final bool isEdit = existingProduct != null;
+    final nameCtrl = TextEditingController(
+      text: isEdit ? (existingProduct['name']?.toString() ?? '') : '',
+    );
+    final weightCtrl = TextEditingController(
+      text: isEdit ? (existingProduct['weight']?.toString() ?? '') : '',
+    );
+    final stockCtrl = TextEditingController(
+      text: isEdit ? '${(existingProduct['stock'] as num?)?.toInt() ?? 0}' : '0',
+    );
+    final int existingCost =
+        isEdit ? ((existingProduct['cost_price'] as num?)?.toInt() ?? 0) : 0;
+    final costPriceCtrl = TextEditingController(
+      text: existingCost > 0 ? '$existingCost' : '',
+    );
+    final int existingPrice = isEdit
+        ? ((existingProduct['price'] as num?)?.toInt() ??
+            (existingProduct['selling_price'] as num?)?.toInt() ??
+            0)
+        : 0;
+    final priceCtrl = TextEditingController(
+      text: existingPrice > 0 ? '$existingPrice' : '',
+    );
 
     final categories = [
       'Sembako',
@@ -318,13 +300,60 @@ class _ProdukPageState extends State<ProdukPage> {
       'kemasan',
     ];
 
+    final pageContext = context;
+    String? dialogError;
+    String selectedCategory =
+        (_selectedCategory != 'Semua' && categories.contains(_selectedCategory))
+            ? _selectedCategory
+            : 'Umum';
+    bool isCustomCategory = false;
+    final customCategoryCtrl = TextEditingController();
+    if (isEdit) {
+      final rawCat =
+          (existingProduct['category'] ?? existingProduct['jenis'] ?? 'Umum')
+              .toString()
+              .trim();
+      if (rawCat.isNotEmpty) {
+        final matched = categories.firstWhere(
+          (c) => c.toLowerCase() == rawCat.toLowerCase(),
+          orElse: () => '',
+        );
+        if (matched.isNotEmpty) {
+          selectedCategory = matched;
+          isCustomCategory = (matched == 'Lainnya');
+        } else {
+          selectedCategory = 'Lainnya';
+          isCustomCategory = true;
+          customCategoryCtrl.text = rawCat;
+        }
+      }
+    }
+
+    String selectedUnit = 'pcs';
+    bool unitManuallySelected = isEdit;
+    if (isEdit) {
+      final rawUnit = existingProduct['unit']?.toString().trim() ?? '';
+      if (rawUnit.isNotEmpty) {
+        selectedUnit = rawUnit;
+        if (!units.contains(rawUnit)) {
+          units.add(rawUnit);
+        }
+      }
+    }
+
+    final rawImg =
+        isEdit ? (existingProduct['image']?.toString().trim() ?? '') : '';
+    String? selectedImage = rawImg.isNotEmpty ? rawImg : null;
+    String? selectedImageLabel =
+        selectedImage != null ? 'Foto Produk Tersimpan' : null;
+
     showModalBottomSheet(
-      context: context,
+      context: pageContext,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
         return StatefulBuilder(
-          builder: (context, setDialogState) {
+          builder: (sheetContext, setDialogState) {
             return Container(
               decoration: const BoxDecoration(
                 color: Colors.white,
@@ -334,7 +363,7 @@ class _ProdukPageState extends State<ProdukPage> {
                 left: 20,
                 right: 20,
                 top: 16,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+                bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 20,
               ),
               child: SingleChildScrollView(
                 child: Column(
@@ -363,24 +392,30 @@ class _ProdukPageState extends State<ProdukPage> {
                             color: const Color(0xFFE8F5E9),
                             borderRadius: BorderRadius.circular(10),
                           ),
-                          child: const Icon(Icons.add_business_rounded, color: kGreen, size: 24),
+                          child: Icon(
+                            isEdit ? Icons.edit_note_rounded : Icons.add_business_rounded,
+                            color: kGreen,
+                            size: 24,
+                          ),
                         ),
                         const SizedBox(width: 12),
-                        const Expanded(
+                        Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Tambah Produk Baru',
-                                style: TextStyle(
+                                isEdit ? 'Edit Produk' : 'Tambah Produk Baru',
+                                style: const TextStyle(
                                   fontSize: 17,
                                   fontWeight: FontWeight.bold,
                                   color: Color(0xFF111827),
                                 ),
                               ),
                               Text(
-                                'Masukkan nama, berat, harga, dan jenis',
-                                style: TextStyle(fontSize: 11.5, color: Colors.grey),
+                                isEdit
+                                    ? 'Perbarui foto, nama, berat, harga, dan stok'
+                                    : 'Masukkan nama, berat, harga, dan jenis',
+                                style: const TextStyle(fontSize: 11.5, color: Colors.grey),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -406,7 +441,6 @@ class _ProdukPageState extends State<ProdukPage> {
                       onTap: () {
                         _showPickImageSheet(
                           parentContext: context,
-                          currentImage: selectedImage,
                           onPicked: (imgVal, imgLabel) {
                             setDialogState(() {
                               selectedImage = imgVal;
@@ -463,7 +497,7 @@ class _ProdukPageState extends State<ProdukPage> {
                                   Text(
                                     selectedImage != null
                                         ? 'Ketuk untuk mengganti foto produk'
-                                        : 'Pilih foto produk dari perangkat atau galeri',
+                                        : 'Pilih file foto produk dari perangkat',
                                     style: const TextStyle(fontSize: 11.5, color: Colors.grey),
                                   ),
                                 ],
@@ -667,9 +701,9 @@ class _ProdukPageState extends State<ProdukPage> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
-                                'Stok Awal',
-                                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF374151)),
+                              Text(
+                                isEdit ? 'Stok' : 'Stok Awal',
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF374151)),
                               ),
                               const SizedBox(height: 6),
                               TextField(
@@ -746,6 +780,35 @@ class _ProdukPageState extends State<ProdukPage> {
 
                     const SizedBox(height: 24),
 
+                    if (dialogError != null) ...[
+                      Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade50,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.red.shade200),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.error_outline, color: Colors.redAccent, size: 18),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                dialogError!,
+                                style: const TextStyle(
+                                  color: Colors.redAccent,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+
                     // Action Buttons
                     Row(
                       children: [
@@ -766,9 +829,12 @@ class _ProdukPageState extends State<ProdukPage> {
                             onPressed: () async {
                               final name = nameCtrl.text.trim();
                               final weight = weightCtrl.text.trim();
-                              final costPrice = int.tryParse(costPriceCtrl.text.trim().replaceAll('.', '')) ?? 0;
-                              final price = int.tryParse(priceCtrl.text.trim().replaceAll('.', '')) ?? 0;
-                              final stock = int.tryParse(stockCtrl.text.trim()) ?? 0;
+                              final costPrice =
+                                  int.tryParse(costPriceCtrl.text.trim().replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+                              final price =
+                                  int.tryParse(priceCtrl.text.trim().replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+                              final stock =
+                                  int.tryParse(stockCtrl.text.trim().replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
 
                               String category = selectedCategory;
                               if (isCustomCategory && customCategoryCtrl.text.trim().isNotEmpty) {
@@ -776,7 +842,10 @@ class _ProdukPageState extends State<ProdukPage> {
                               }
 
                               if (name.isEmpty) {
-                                ScaffoldMessenger.of(context).showSnackBar(
+                                setDialogState(() {
+                                  dialogError = 'Nama produk wajib diisi!';
+                                });
+                                ScaffoldMessenger.of(pageContext).showSnackBar(
                                   const SnackBar(
                                     content: Text('Nama produk wajib diisi!'),
                                     backgroundColor: Colors.redAccent,
@@ -786,7 +855,10 @@ class _ProdukPageState extends State<ProdukPage> {
                               }
 
                               if (price <= 0) {
-                                ScaffoldMessenger.of(context).showSnackBar(
+                                setDialogState(() {
+                                  dialogError = 'Harga jual harus lebih dari Rp 0!';
+                                });
+                                ScaffoldMessenger.of(pageContext).showSnackBar(
                                   const SnackBar(
                                     content: Text('Harga jual harus lebih dari Rp 0!'),
                                     backgroundColor: Colors.redAccent,
@@ -796,24 +868,48 @@ class _ProdukPageState extends State<ProdukPage> {
                               }
 
                               Navigator.pop(ctx);
-                              setState(() => _isLoading = true);
+                              if (mounted) {
+                                setState(() {
+                                  _isLoading = true;
+                                  if (_selectedCategory != 'Semua' &&
+                                      _selectedCategory.toLowerCase() != category.toLowerCase()) {
+                                    _selectedCategory = 'Semua';
+                                  }
+                                });
+                              }
 
-                              await ApiService.addProduct(
-                                name: name,
-                                price: price,
-                                costPrice: costPrice,
-                                stock: stock,
-                                initialStock: stock,
-                                unit: selectedUnit,
-                                category: category,
-                                weight: weight,
-                                image: selectedImage,
-                              );
+                              if (isEdit) {
+                                await ApiService.updateProduct(
+                                  id: existingProduct['id'],
+                                  originalName: existingProduct['name']?.toString(),
+                                  name: name,
+                                  price: price,
+                                  costPrice: costPrice,
+                                  stock: stock,
+                                  unit: selectedUnit,
+                                  category: category,
+                                  weight: weight,
+                                  barcode: existingProduct['barcode']?.toString(),
+                                  image: selectedImage ?? '',
+                                );
+                              } else {
+                                await ApiService.addProduct(
+                                  name: name,
+                                  price: price,
+                                  costPrice: costPrice,
+                                  stock: stock,
+                                  initialStock: stock,
+                                  unit: selectedUnit,
+                                  category: category,
+                                  weight: weight,
+                                  image: selectedImage,
+                                );
+                              }
 
                               await _loadProducts();
 
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
+                              if (pageContext.mounted) {
+                                ScaffoldMessenger.of(pageContext).showSnackBar(
                                   SnackBar(
                                     content: Row(
                                       children: [
@@ -821,7 +917,9 @@ class _ProdukPageState extends State<ProdukPage> {
                                         const SizedBox(width: 8),
                                         Expanded(
                                           child: Text(
-                                            'Produk "$name" berhasil ditambahkan!',
+                                            isEdit
+                                                ? 'Produk "$name" berhasil diperbarui!'
+                                                : 'Produk "$name" berhasil ditambahkan!',
                                             style: const TextStyle(fontWeight: FontWeight.w600),
                                           ),
                                         ),
@@ -841,7 +939,10 @@ class _ProdukPageState extends State<ProdukPage> {
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                             ),
                             icon: const Icon(Icons.check, size: 20),
-                            label: const Text('Simpan Produk', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                            label: Text(
+                              isEdit ? 'Simpan Perubahan' : 'Simpan Produk',
+                              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                            ),
                           ),
                         ),
                       ],
@@ -1220,41 +1321,56 @@ class _ProdukPageState extends State<ProdukPage> {
                   Column(
                     children: [
                       ..._filtered.map((item) {
+                        final int rawStock = (item['stock'] as num?)?.toInt() ?? 0;
+                        final int inCartQty = CartService.qtyForProduct(
+                          productId: item['id'],
+                          name: item['name']?.toString() ?? '',
+                        );
                         return _ProductCardItem(
                           product: item,
+                          inCartQty: inCartQty,
                           formatRp: _formatRp,
                           onAdd: () {
-                            final int stock = (item['stock'] as int?) ?? 0;
+                            final int remaining = (rawStock - inCartQty).clamp(0, rawStock);
                             final String unit = (item['unit'] as String?)?.trim().isNotEmpty == true
                                 ? (item['unit'] as String).trim()
                                 : 'pcs';
                             final int costPrice = (item['cost_price'] as num?)?.toInt() ?? 0;
                             final String? image = item['image'] as String?;
                             final String? category = (item['category'] ?? item['jenis'])?.toString();
-                            final added = CartService.addItem(
-                              item['name'] as String,
-                              (item['price'] as int?) ?? 0,
-                              unit,
-                              maxStock: stock,
-                              productId: item['id'],
-                              costPrice: costPrice,
-                              image: image,
-                              category: category,
-                            );
+                            final bool added = remaining > 0 &&
+                                CartService.addItem(
+                                  item['name'] as String,
+                                  (item['price'] as num?)?.toInt() ?? 0,
+                                  unit,
+                                  maxStock: rawStock,
+                                  productId: item['id'],
+                                  costPrice: costPrice,
+                                  image: image,
+                                  category: category,
+                                );
+                            final int nextRemaining = added ? (remaining - 1) : remaining;
+                            final String msg;
+                            if (!added) {
+                              msg = rawStock <= 0
+                                  ? 'Peringatan: Stok ${item['name']} sudah habis (0 $unit)!'
+                                  : 'Peringatan: Stok ${item['name']} habis! Maksimal $rawStock $unit sudah di keranjang.';
+                            } else if (nextRemaining <= 0) {
+                              msg = '${item['name']} ditambahkan ($unit). Sisa stok: 0 $unit (habis)!';
+                            } else {
+                              msg = '${item['name']} ($unit) ditambahkan! Sisa stok: $nextRemaining $unit';
+                            }
                             ScaffoldMessenger.of(context).hideCurrentSnackBar();
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text(
-                                  added
-                                      ? '${item['name']} ($unit) ditambahkan ke keranjang!'
-                                      : 'Stok ${item['name']} tidak mencukupi (stok: $stock $unit)!',
-                                ),
+                                content: Text(msg),
                                 backgroundColor: added ? kGreen : Colors.redAccent,
-                                duration: const Duration(milliseconds: 1400),
+                                duration: Duration(milliseconds: added ? 1400 : 2200),
                                 behavior: SnackBarBehavior.floating,
                               ),
                             );
                           },
+                          onEdit: () => _showEditProductDialog(item),
                           onDelete: () => _confirmDelete(item),
                         );
                       }),
@@ -1382,22 +1498,28 @@ Widget _buildProductImageWidget(
 // ─────────────────────────────────────────────
 class _ProductCardItem extends StatelessWidget {
   final Map<String, dynamic> product;
+  final int inCartQty;
   final String Function(int) formatRp;
   final VoidCallback onAdd;
+  final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   const _ProductCardItem({
     required this.product,
+    this.inCartQty = 0,
     required this.formatRp,
     required this.onAdd,
+    required this.onEdit,
     required this.onDelete,
   });
 
   @override
   Widget build(BuildContext context) {
-    final int stock = (product['stock'] as int?) ?? 0;
-    final bool low = ApiService.isLowStock(product);
-    final int price = (product['price'] as int?) ?? (product['selling_price'] as int?) ?? 0;
+    final int rawStock = (product['stock'] as num?)?.toInt() ?? 0;
+    final int stock = (rawStock - inCartQty).clamp(0, rawStock);
+    final bool outOfStock = stock <= 0;
+    final bool low = outOfStock || ApiService.isLowStock({...product, 'stock': stock});
+    final int price = (product['price'] as num?)?.toInt() ?? (product['selling_price'] as num?)?.toInt() ?? 0;
     final int costPrice = (product['cost_price'] as num?)?.toInt() ?? 0;
     final String unit = (product['unit'] as String?)?.trim().isNotEmpty == true
         ? (product['unit'] as String).trim()
@@ -1432,13 +1554,27 @@ class _ProductCardItem extends StatelessWidget {
       }
     }
 
+    final String stockLabel;
+    if (outOfStock) {
+      stockLabel = inCartQty > 0
+          ? 'Stok habis ($inCartQty di keranjang)'
+          : 'Stok habis (0 $unit)';
+    } else if (inCartQty > 0) {
+      stockLabel = 'Stok: $stock $unit ($inCartQty di keranjang)';
+    } else {
+      stockLabel = low ? 'Stok tersisa: $stock $unit' : 'Stok: $stock $unit';
+    }
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFF0F0F0), width: 1.2),
+        border: Border.all(
+          color: outOfStock ? const Color(0xFFFECACA) : const Color(0xFFF0F0F0),
+          width: 1.2,
+        ),
         boxShadow: const [
           BoxShadow(
             color: Color(0x08000000),
@@ -1449,140 +1585,178 @@ class _ProductCardItem extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // Icon or Uploaded Image Container
-          Container(
-            width: 48,
-            height: 48,
-            clipBehavior: Clip.antiAlias,
-            decoration: BoxDecoration(
-              color: bgColor,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: image.isNotEmpty
-                ? _buildProductImageWidget(
-                    image,
-                    fallbackIcon: iconData,
-                    fallbackColor: iconColor,
-                  )
-                : Icon(
-                    iconData,
-                    color: iconColor,
-                    size: 24,
-                  ),
-          ),
-          const SizedBox(width: 14),
-
-          // Product Details
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        name,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 15,
-                          color: Color(0xFF111827),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+            child: GestureDetector(
+              onTap: onEdit,
+              behavior: HitTestBehavior.opaque,
+              child: Row(
+                children: [
+                  // Icon or Uploaded Image Container
+                  Container(
+                    width: 46,
+                    height: 46,
+                    clipBehavior: Clip.antiAlias,
+                    decoration: BoxDecoration(
+                      color: bgColor,
+                      borderRadius: BorderRadius.circular(14),
                     ),
-                    if (category.isNotEmpty) ...[
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF3F4F6),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: const Color(0xFFE5E7EB)),
+                    child: image.isNotEmpty
+                        ? _buildProductImageWidget(
+                            image,
+                            fallbackIcon: iconData,
+                            fallbackColor: iconColor,
+                          )
+                        : Icon(
+                            iconData,
+                            color: iconColor,
+                            size: 24,
+                          ),
+                  ),
+                  const SizedBox(width: 12),
+
+                  // Product Details
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                name,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                  color: Color(0xFF111827),
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            if (category.isNotEmpty) ...[
+                              const SizedBox(width: 6),
+                              Flexible(
+                                flex: 0,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF3F4F6),
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(color: const Color(0xFFE5E7EB)),
+                                  ),
+                                  child: Text(
+                                    category,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF4B5563),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
-                        child: Text(
-                          category,
-                          style: const TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF4B5563),
+                        const SizedBox(height: 3),
+                        Wrap(
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            Text(
+                              formatRp(price),
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF1E874B),
+                              ),
+                            ),
+                            Text(
+                              ' / $unit',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: Color(0xFF6B7280),
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (costPrice > 0) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            'Modal: ${formatRp(costPrice)} / $unit',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 11.5,
+                              color: Color(0xFF4B5563),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 2),
+                        Text(
+                          stockLabel,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: low ? FontWeight.w600 : FontWeight.normal,
+                            color: low ? const Color(0xFFB91C1C) : const Color(0xFF6B7280),
                           ),
                         ),
-                      ),
-                    ],
-                  ],
-                ),
-                const SizedBox(height: 3),
-                Row(
-                  children: [
-                    Text(
-                      formatRp(price),
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF1E874B),
-                      ),
-                    ),
-                    Text(
-                      ' / $unit',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFF6B7280),
-                      ),
-                    ),
-                  ],
-                ),
-                if (costPrice > 0) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    'Modal: ${formatRp(costPrice)} / $unit',
-                    style: const TextStyle(
-                      fontSize: 11.5,
-                      color: Color(0xFF4B5563),
-                      fontWeight: FontWeight.w500,
+                      ],
                     ),
                   ),
                 ],
-                const SizedBox(height: 2),
-                Text(
-                  low ? 'Stok tersisa: $stock $unit' : 'Stok: $stock $unit',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: low ? FontWeight.w600 : FontWeight.normal,
-                    color: low ? const Color(0xFFB91C1C) : const Color(0xFF6B7280),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
           const SizedBox(width: 8),
 
-          // Action Button: "Tambah" ke keranjang
+          // Action Button: "Tambah" ke keranjang (atau "Habis" jika stok kosong)
           OutlinedButton(
             onPressed: onAdd,
             style: OutlinedButton.styleFrom(
-              foregroundColor: const Color(0xFF1E874B),
-              side: const BorderSide(color: Color(0xFF1E874B), width: 1.2),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              foregroundColor: outOfStock ? const Color(0xFFB91C1C) : const Color(0xFF1E874B),
+              backgroundColor: outOfStock ? const Color(0xFFFEF2F2) : null,
+              side: BorderSide(
+                color: outOfStock ? const Color(0xFFFCA5A5) : const Color(0xFF1E874B),
+                width: 1.2,
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               minimumSize: Size.zero,
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
-            child: const Text(
-              'Tambah',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            child: Text(
+              outOfStock ? 'Habis' : 'Tambah',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5),
             ),
           ),
 
-          // Delete options popup
+          // Edit & Delete options popup
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert, size: 18, color: Colors.grey),
             padding: EdgeInsets.zero,
             onSelected: (val) {
-              if (val == 'delete') onDelete();
+              if (val == 'edit') {
+                onEdit();
+              } else if (val == 'delete') {
+                onDelete();
+              }
             },
             itemBuilder: (ctx) => [
+              const PopupMenuItem(
+                value: 'edit',
+                child: Row(
+                  children: [
+                    Icon(Icons.edit_outlined, size: 18, color: Color(0xFF1E874B)),
+                    SizedBox(width: 8),
+                    Text('Edit Produk', style: TextStyle(color: Color(0xFF111827), fontSize: 13)),
+                  ],
+                ),
+              ),
               const PopupMenuItem(
                 value: 'delete',
                 child: Row(

@@ -43,77 +43,75 @@ class DashboardController extends Controller
             ->limit(10)
             ->get();
 
-        // 3. Tren Penjualan 7 Hari Terakhir
+        // 3. Tren Penjualan Produk 7 Hari Terakhir (jumlah produk terjual per hari)
         $sevenDaysStart = now()->subDays(6)->startOfDay();
-        $trend7Days = Transaction::selectRaw('date(transaction_date) as date, SUM(total_amount) as total, COUNT(*) as count')
-            ->where('business_id', $businessId)
-            ->where('status', 'completed')
-            ->where('transaction_date', '>=', $sevenDaysStart)
-            ->groupBy(DB::raw('date(transaction_date)'))
-            ->orderBy('date')
-            ->get()
-            ->map(fn ($row) => [
-                'date' => $row->date,
-                'total' => (int) $row->total,
-                'count' => (int) $row->count,
-            ]);
+        $trend7Days = $this->aggregateSoldTrend(
+            $businessId,
+            $sevenDaysStart,
+            'date(transactions.transaction_date)',
+            'date',
+        );
 
-        // 4. Tren Penjualan 30 Hari Terakhir
+        // 4. Tren Penjualan Produk 30 Hari Terakhir (jumlah produk terjual per hari)
         $thirtyDaysStart = now()->subDays(29)->startOfDay();
-        $trend30Days = Transaction::selectRaw('date(transaction_date) as date, SUM(total_amount) as total, COUNT(*) as count')
-            ->where('business_id', $businessId)
-            ->where('status', 'completed')
-            ->where('transaction_date', '>=', $thirtyDaysStart)
-            ->groupBy(DB::raw('date(transaction_date)'))
-            ->orderBy('date')
-            ->get()
-            ->map(fn ($row) => [
-                'date' => $row->date,
-                'total' => (int) $row->total,
-                'count' => (int) $row->count,
-            ]);
+        $trend30Days = $this->aggregateSoldTrend(
+            $businessId,
+            $thirtyDaysStart,
+            'date(transactions.transaction_date)',
+            'date',
+        );
 
-        // 5. Tren Penjualan Bulanan (6 bulan terakhir)
+        // 5. Tren Penjualan Produk Bulanan (6 bulan terakhir)
         $monthSql = $driver === 'sqlite'
-            ? "strftime('%Y-%m', transaction_date)"
-            : "DATE_FORMAT(transaction_date, '%Y-%m')";
+            ? "strftime('%Y-%m', transactions.transaction_date)"
+            : "DATE_FORMAT(transactions.transaction_date, '%Y-%m')";
 
         $sixMonthsStart = now()->subMonths(5)->startOfMonth();
-        $trendMonthly = Transaction::selectRaw("{$monthSql} as month, SUM(total_amount) as total, COUNT(*) as count")
-            ->where('business_id', $businessId)
-            ->where('status', 'completed')
-            ->where('transaction_date', '>=', $sixMonthsStart)
-            ->groupBy(DB::raw($monthSql))
-            ->orderBy('month')
-            ->get()
-            ->map(fn ($row) => [
-                'month' => $row->month,
-                'total' => (int) $row->total,
-                'count' => (int) $row->count,
-            ]);
+        $trendMonthly = $this->aggregateSoldTrend(
+            $businessId,
+            $sixMonthsStart,
+            $monthSql,
+            'month',
+        );
 
-        // 6. Produk Terlaris (30 hari terakhir)
-        $topProducts = TransactionItem::whereHas('transaction', function ($q) use ($businessId, $thirtyDaysStart) {
-            $q->where('business_id', $businessId)
-                ->where('status', 'completed')
-                ->where('transaction_date', '>=', $thirtyDaysStart);
-        })
-            ->whereNotNull('product_id')
-            ->select('product_id', DB::raw('SUM(quantity) as total_sold'), DB::raw('SUM(subtotal) as total_revenue'))
-            ->groupBy('product_id')
-            ->orderByDesc('total_sold')
-            ->limit(5)
-            ->with('product:id,name,unit,selling_price')
-            ->get()
-            ->map(function ($item) {
-                return [
-                    'product_id' => $item->product_id,
-                    'name' => $item->product?->name ?? 'Produk dihapus',
-                    'unit' => $item->product?->unit ?? 'pcs',
-                    'total_sold' => (int) $item->total_sold,
-                    'total_revenue' => (int) $item->total_revenue,
-                ];
-            });
+        // 6. Produk Terlaris (berdasarkan jumlah produk terjual tertinggi, 30 hari terakhir / semua transaksi)
+        $buildTopProductsQuery = function (bool $restrict30Days) use ($businessId, $thirtyDaysStart) {
+            return TransactionItem::whereHas('transaction', function ($q) use ($businessId, $thirtyDaysStart, $restrict30Days) {
+                $q->where('business_id', $businessId)
+                    ->where('status', 'completed');
+                if ($restrict30Days) {
+                    $q->where('transaction_date', '>=', $thirtyDaysStart);
+                }
+            })
+                ->select(
+                    DB::raw('MAX(product_id) as product_id'),
+                    DB::raw('MAX(item_name) as fallback_name'),
+                    DB::raw('SUM(quantity) as total_sold'),
+                    DB::raw('SUM(subtotal) as total_revenue')
+                )
+                ->groupBy(DB::raw('COALESCE(CAST(product_id AS CHAR), item_name)'))
+                ->orderByDesc('total_sold')
+                ->orderByDesc('total_revenue')
+                ->limit(5)
+                ->with('product:id,name,unit,selling_price,category_id', 'product.category:id,name')
+                ->get();
+        };
+
+        $topProductRows = $buildTopProductsQuery(true);
+        if ($topProductRows->isEmpty()) {
+            $topProductRows = $buildTopProductsQuery(false);
+        }
+
+        $topProducts = $topProductRows->map(function ($item) {
+            return [
+                'product_id' => $item->product_id,
+                'name' => $item->product?->name ?? $item->fallback_name ?? 'Produk Umum',
+                'unit' => $item->product?->unit ?? 'pcs',
+                'category' => $item->product?->category?->name ?? 'Umum',
+                'total_sold' => (int) $item->total_sold,
+                'total_revenue' => (int) $item->total_revenue,
+            ];
+        })->values();
 
         // 7. Ringkasan Laba Bersih Bulan Berjalan (P1)
         $monthlyRevenue = (int) Transaction::where('business_id', $businessId)
@@ -158,5 +156,30 @@ class DashboardController extends Controller
                 'net_profit' => $monthlyNetProfit,
             ],
         ]);
+    }
+
+    /**
+     * Hitung total produk terjual (dan pendapatan referensi) per hari/bulan
+     * agar grafik tren merefleksikan jumlah produk sold terbanyak.
+     */
+    private function aggregateSoldTrend(int $businessId, Carbon $startDate, string $groupExpr, string $alias): array
+    {
+        return TransactionItem::query()
+            ->join('transactions', 'transaction_items.transaction_id', '=', 'transactions.id')
+            ->where('transactions.business_id', $businessId)
+            ->where('transactions.status', 'completed')
+            ->where('transactions.transaction_date', '>=', $startDate)
+            ->selectRaw("{$groupExpr} as {$alias}, COALESCE(SUM(transaction_items.quantity), 0) as sold, COALESCE(SUM(transaction_items.subtotal), 0) as revenue, COUNT(DISTINCT transactions.id) as count")
+            ->groupBy(DB::raw($groupExpr))
+            ->orderBy($alias)
+            ->get()
+            ->map(fn ($row) => [
+                $alias => $row->{$alias},
+                'total' => (int) $row->sold,
+                'sold' => (int) $row->sold,
+                'revenue' => (int) $row->revenue,
+                'count' => (int) $row->count,
+            ])
+            ->all();
     }
 }

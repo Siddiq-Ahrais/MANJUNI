@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api_config.dart';
+import 'cart_service.dart';
 
 class ApiService {
   // Status koneksi: null = belum dicek, true = online (terhubung ke server), false = offline
@@ -39,6 +40,12 @@ class ApiService {
   static const String _kProductsKey = productsStorageKey;
   static const String _kCustomersKey = 'mj_customers_v1';
   static const String _kTransactionsKey = 'mj_transactions_v1';
+  static const String _kTransactionsResetMaxIdKey = 'mj_transactions_reset_max_id_v1';
+  static const String _kTransactionsResetAtKey = 'mj_transactions_reset_at_v1';
+  static const String _kAuthTokenKey = 'mj_auth_token_v1';
+  static int _transactionsResetMaxId = 0;
+  static int _lastFetchedMaxServerTxId = 0;
+  static DateTime? _transactionsResetAt;
   static bool _localDataLoaded = false;
 
   /// Muat data fallback yang tersimpan di perangkat (SharedPreferences).
@@ -57,6 +64,16 @@ class ApiService {
       _fallbackTransactions
         ..clear()
         ..addAll(_decodeStoredList(prefs.getString(_kTransactionsKey)));
+      _transactionsResetMaxId = prefs.getInt(_kTransactionsResetMaxIdKey) ?? 0;
+      final resetAtRaw = prefs.getString(_kTransactionsResetAtKey);
+      _transactionsResetAt =
+          resetAtRaw != null ? DateTime.tryParse(resetAtRaw)?.toUtc() : null;
+      final savedToken = prefs.getString(_kAuthTokenKey);
+      if ((ApiConfig.token == null || ApiConfig.token!.isEmpty) &&
+          savedToken != null &&
+          savedToken.isNotEmpty) {
+        ApiConfig.token = savedToken;
+      }
     } catch (_) {
       // Penyimpanan tidak tersedia (mis. saat widget test) -> pakai data memori saja.
     }
@@ -79,6 +96,20 @@ class ApiService {
       await prefs.setString(_kProductsKey, jsonEncode(_fallbackProducts));
       await prefs.setString(_kCustomersKey, jsonEncode(_fallbackCustomers));
       await prefs.setString(_kTransactionsKey, jsonEncode(_fallbackTransactions));
+      await prefs.setInt(_kTransactionsResetMaxIdKey, _transactionsResetMaxId);
+      if (_transactionsResetAt != null) {
+        await prefs.setString(
+          _kTransactionsResetAtKey,
+          _transactionsResetAt!.toIso8601String(),
+        );
+      } else {
+        await prefs.remove(_kTransactionsResetAtKey);
+      }
+      if (ApiConfig.token != null && ApiConfig.token!.isNotEmpty) {
+        await prefs.setString(_kAuthTokenKey, ApiConfig.token!);
+      } else {
+        await prefs.remove(_kAuthTokenKey);
+      }
     } catch (_) {
       // Tidak bisa menyimpan (mis. saat widget test) -> abaikan.
     }
@@ -88,6 +119,9 @@ class ApiService {
     _fallbackProducts.clear();
     _fallbackTransactions.clear();
     _fallbackCustomers.clear();
+    _transactionsResetMaxId = 0;
+    _lastFetchedMaxServerTxId = 0;
+    _transactionsResetAt = null;
     ApiConfig.token = null;
     userNotifier.value = null;
     authStateNotifier.value = false;
@@ -95,11 +129,39 @@ class ApiService {
     _persistLocalData(); // bersihkan juga salinan tersimpan di perangkat
   }
 
-  /// Kosongkan hanya riwayat transaksi lokal; produk & pelanggan tetap ada.
-  static void resetTransactions() {
+  /// Kosongkan riwayat transaksi lokal dan di backend server (bila terhubung); produk & pelanggan tetap ada.
+  static Future<void> resetTransactions() async {
+    int maxKnownId = _lastFetchedMaxServerTxId;
+    for (final t in _fallbackTransactions) {
+      final rid = (t['raw_id'] as num?)?.toInt() ?? 0;
+      if (rid > maxKnownId) maxKnownId = rid;
+    }
+    if (maxKnownId > _transactionsResetMaxId) {
+      _transactionsResetMaxId = maxKnownId;
+    }
+    _transactionsResetAt = DateTime.now().toUtc();
     _fallbackTransactions.clear();
+
+    if (ApiConfig.token != null && ApiConfig.token!.isNotEmpty) {
+      try {
+        final res = await http
+            .post(
+              Uri.parse('${ApiConfig.transactionsUrl}/reset'),
+              headers: ApiConfig.defaultHeaders,
+            )
+            .timeout(const Duration(seconds: 5));
+        if (res.statusCode == 200) {
+          // Server berhasil menghapus semua transaksi di DB; reset batas filter lokal
+          // agar transaksi baru (atau hasil seed ulang) dengan ID kecil tidak ikut terfilter.
+          _transactionsResetMaxId = 0;
+          _lastFetchedMaxServerTxId = 0;
+          _transactionsResetAt = null;
+        }
+      } catch (_) {}
+    }
+
     dataChangedNotifier.value++;
-    _persistLocalData();
+    await _persistLocalData();
   }
 
   /// Ambil daftar pelanggan (lokal/fallback)
@@ -178,6 +240,7 @@ class ApiService {
         lastErrorNotifier.value = null;
         authStateNotifier.value = true; // Sukses login -> tampilkan shell utama
         dataChangedNotifier.value++;
+        await _persistLocalData();
         return {'success': true, 'data': body};
       } else {
         final msg = body['message'] ?? 'Login gagal. Periksa kembali email dan password.';
@@ -224,6 +287,7 @@ class ApiService {
         isConnectedNotifier.value = true;
         authStateNotifier.value = true; // Sukses registrasi -> langsung masuk
         dataChangedNotifier.value++;
+        await _persistLocalData();
         return {'success': true, 'data': body};
       } else {
         return {'success': false, 'message': body['message'] ?? 'Registrasi gagal.'};
@@ -245,6 +309,7 @@ class ApiService {
     userNotifier.value = null;
     authStateNotifier.value = false; // Logout -> kembali ke halaman login
     dataChangedNotifier.value++;
+    await _persistLocalData();
   }
 
   /// Validasi apakah stok produk menipis berdasarkan persentase (< 50% dari stok awal).
@@ -266,7 +331,7 @@ class ApiService {
   /// Ambil daftar produk dari backend Laravel atau fallback lokal
   static Future<List<Map<String, dynamic>>> getProducts() async {
     try {
-      final uri = Uri.parse(ApiConfig.productsUrl);
+      final uri = Uri.parse('${ApiConfig.productsUrl}?per_page=100');
       final res = await http.get(uri, headers: ApiConfig.defaultHeaders).timeout(const Duration(seconds: 5));
 
       if (res.statusCode == 200) {
@@ -309,7 +374,7 @@ class ApiService {
 
           // Samakan cache lokal dengan data server lalu simpan ke perangkat,
           // sehingga daftar produk tetap ada setelah aplikasi ditutup.
-          _mergeServerProducts(mapped);
+          await _mergeServerProducts(mapped);
           return List<Map<String, dynamic>>.from(_fallbackProducts);
         }
       }
@@ -330,8 +395,8 @@ class ApiService {
 
   /// Samakan cache produk lokal dengan data server tanpa membuang
   /// produk yang ditambahkan saat offline (belum ada di server) serta
-  /// menjaga atribut lokal seperti initial_stock, image, weight, dan unit.
-  static void _mergeServerProducts(List<Map<String, dynamic>> serverItems) {
+  /// menjaga atribut lokal seperti initial_stock, category, image, weight, dan unit.
+  static Future<void> _mergeServerProducts(List<Map<String, dynamic>> serverItems) async {
     final existingByName = <String, Map<String, dynamic>>{
       for (final p in _fallbackProducts)
         ((p['name'] as String?) ?? '').toLowerCase(): p,
@@ -356,6 +421,20 @@ class ApiService {
         if ((s['unit'] == null || s['unit'].toString().isEmpty) && local['unit'] != null) {
           s['unit'] = local['unit'];
         }
+        final String serverCat = (s['category'] ?? s['jenis'] ?? '').toString().trim();
+        final String localCat = (local['category'] ?? local['jenis'] ?? '').toString().trim();
+        if (serverCat.isEmpty && localCat.isNotEmpty) {
+          s['category'] = localCat;
+          s['jenis'] = localCat;
+        }
+      }
+      final String finalCat = (s['category'] ?? s['jenis'] ?? '').toString().trim();
+      if (finalCat.isEmpty) {
+        s['category'] = 'Umum';
+        s['jenis'] = 'Umum';
+      } else {
+        s['category'] = finalCat;
+        s['jenis'] = finalCat;
       }
       s['low'] = isLowStock(s);
       return s;
@@ -376,7 +455,55 @@ class ApiService {
       ..clear()
       ..addAll(localOnly)
       ..addAll(mergedServer);
-    _persistLocalData();
+    await _persistLocalData();
+  }
+
+  static Future<int?> _resolveCategoryId(String categoryName) async {
+    final normalized = categoryName.trim();
+    if (normalized.isEmpty) return null;
+    try {
+      final catRes = await http
+          .get(Uri.parse(ApiConfig.categoriesUrl), headers: ApiConfig.defaultHeaders)
+          .timeout(const Duration(seconds: 4));
+      if (catRes.statusCode == 200) {
+        final catBody = jsonDecode(catRes.body);
+        final List cats = catBody is List ? catBody : ((catBody['data'] as List?) ?? []);
+        final lowerTarget = normalized.toLowerCase();
+        for (final c in cats) {
+          if (c is Map) {
+            final cName = (c['name']?.toString() ?? '').trim().toLowerCase();
+            if (cName == lowerTarget) {
+              return (c['id'] as num?)?.toInt();
+            }
+          }
+        }
+        for (final c in cats) {
+          if (c is Map) {
+            final cName = (c['name']?.toString() ?? '').trim().toLowerCase();
+            if (cName.isNotEmpty &&
+                (cName.contains(lowerTarget) || lowerTarget.contains(cName))) {
+              return (c['id'] as num?)?.toInt();
+            }
+          }
+        }
+      }
+      // Jika kategori belum ada di backend, buat otomatis agar kategori tersimpan di DB
+      final createRes = await http
+          .post(
+            Uri.parse(ApiConfig.categoriesUrl),
+            headers: ApiConfig.defaultHeaders,
+            body: jsonEncode({'name': normalized}),
+          )
+          .timeout(const Duration(seconds: 4));
+      if (createRes.statusCode == 200 || createRes.statusCode == 201) {
+        final createdBody = jsonDecode(createRes.body);
+        if (createdBody is Map) {
+          final catObj = createdBody['data'] is Map ? createdBody['data'] : createdBody;
+          return (catObj['id'] as num?)?.toInt();
+        }
+      }
+    } catch (_) {}
+    return null;
   }
 
   /// Tambah produk baru ke backend Laravel & cache lokal
@@ -393,6 +520,7 @@ class ApiService {
     String? weight,
     String? image,
   }) async {
+    final trimmedName = name.trim();
     final effectiveCategory = (category != null && category.trim().isNotEmpty) ? category.trim() : 'Umum';
     final effectiveUnit = unit.trim().isNotEmpty ? unit.trim() : 'pcs';
     final effectiveInitialStock = initialStock ?? stock;
@@ -404,30 +532,15 @@ class ApiService {
     final effectiveWeight = weight?.trim() ?? '';
     final effectiveImage = image?.trim() ?? '';
 
+    dynamic serverId;
     try {
       final uri = Uri.parse(ApiConfig.productsUrl);
 
       // Petakan nama kategori pilihan user ke ID kategori di backend Laravel
-      int? categoryId;
-      try {
-        final catRes = await http
-            .get(Uri.parse(ApiConfig.categoriesUrl), headers: ApiConfig.defaultHeaders)
-            .timeout(const Duration(seconds: 4));
-        if (catRes.statusCode == 200) {
-          final catBody = jsonDecode(catRes.body);
-          final List cats = catBody is List ? catBody : ((catBody['data'] as List?) ?? []);
-          for (final c in cats) {
-            if (c is Map &&
-                (c['name']?.toString().toLowerCase() == effectiveCategory.toLowerCase())) {
-              categoryId = (c['id'] as num?)?.toInt();
-              break;
-            }
-          }
-        }
-      } catch (_) {}
+      final int? categoryId = await _resolveCategoryId(effectiveCategory);
 
       final payload = {
-        'name': name.trim(),
+        'name': trimmedName,
         'unit': effectiveUnit,
         'cost_price': effectiveCostPrice,
         'selling_price': price,
@@ -453,27 +566,7 @@ class ApiService {
           if (created is Map) {
             final serverObj = created['data'] is Map ? created['data'] : created;
             if (serverObj['id'] != null) {
-              final newMap = <String, dynamic>{
-                'id': serverObj['id'],
-                'name': name,
-                'price': price,
-                'selling_price': price,
-                'cost_price': effectiveCostPrice,
-                'stock': stock,
-                'initial_stock': effectiveInitialStock,
-                'min_stock': effectiveMinStock,
-                'unit': effectiveUnit,
-                'category': effectiveCategory,
-                'jenis': effectiveCategory,
-                'barcode': effectiveBarcode,
-                'weight': effectiveWeight,
-                'image': effectiveImage,
-              };
-              newMap['low'] = isLowStock(newMap);
-              _fallbackProducts.insert(0, newMap);
-              dataChangedNotifier.value++;
-              _persistLocalData();
-              return true;
+              serverId = serverObj['id'];
             }
           }
         } catch (_) {}
@@ -484,8 +577,8 @@ class ApiService {
 
     // Selalu simpan ke fallback lokal agar instan muncul di UI dan test lolos
     final newMap = <String, dynamic>{
-      'id': DateTime.now().millisecondsSinceEpoch,
-      'name': name,
+      'id': serverId ?? DateTime.now().millisecondsSinceEpoch,
+      'name': trimmedName,
       'price': price,
       'selling_price': price,
       'cost_price': effectiveCostPrice,
@@ -500,7 +593,121 @@ class ApiService {
       'image': effectiveImage,
     };
     newMap['low'] = isLowStock(newMap);
+    _fallbackProducts.removeWhere(
+      (p) =>
+          (serverId != null && p['id'] == serverId) ||
+          ((p['name'] as String?) ?? '').toLowerCase() == trimmedName.toLowerCase(),
+    );
     _fallbackProducts.insert(0, newMap);
+    dataChangedNotifier.value++;
+    await _persistLocalData();
+    return true;
+  }
+
+  /// Perbarui detail produk (termasuk foto, nama, kategori, satuan, stok, harga modal & jual)
+  static Future<bool> updateProduct({
+    required dynamic id,
+    String? originalName,
+    required String name,
+    required int price,
+    required int stock,
+    required String unit,
+    String? category,
+    int? costPrice,
+    int? minStock,
+    String? barcode,
+    String? weight,
+    String? image,
+  }) async {
+    final trimmedName = name.trim();
+    final effectiveCategory =
+        (category != null && category.trim().isNotEmpty) ? category.trim() : 'Umum';
+    final effectiveUnit = unit.trim().isNotEmpty ? unit.trim() : 'pcs';
+    final effectiveCostPrice = costPrice ?? 0;
+    final effectiveBarcode = barcode?.trim() ?? '';
+    final effectiveWeight = weight?.trim() ?? '';
+    final effectiveImage = image?.trim() ?? '';
+
+    final idx = _fallbackProducts.indexWhere((p) {
+      if (id != null && p['id'] == id) return true;
+      if (originalName != null &&
+          (p['name'] as String? ?? '').toLowerCase() == originalName.toLowerCase()) {
+        return true;
+      }
+      return false;
+    });
+
+    final int prevStock = idx != -1 ? ((_fallbackProducts[idx]['stock'] as num?)?.toInt() ?? 0) : stock;
+    final int prevInitial = idx != -1
+        ? ((_fallbackProducts[idx]['initial_stock'] as num?)?.toInt() ?? prevStock)
+        : stock;
+    final int effectiveInitialStock = stock > prevInitial ? stock : prevInitial;
+    final int effectiveMinStock = minStock ??
+        (effectiveInitialStock > 0 ? ((effectiveInitialStock - 1) ~/ 2) : 0);
+
+    final int? parsedId = id is int ? id : (id is String ? int.tryParse(id) : null);
+    if (parsedId != null) {
+      try {
+        final int? categoryId = await _resolveCategoryId(effectiveCategory);
+        final payload = {
+          'name': trimmedName,
+          'unit': effectiveUnit,
+          'cost_price': effectiveCostPrice,
+          'selling_price': price,
+          'min_stock': effectiveMinStock,
+          'category_id': ?categoryId,
+          if (effectiveBarcode.isNotEmpty) 'barcode': effectiveBarcode,
+        };
+        final res = await http
+            .put(
+              Uri.parse('${ApiConfig.productsUrl}/$parsedId'),
+              headers: ApiConfig.defaultHeaders,
+              body: jsonEncode(payload),
+            )
+            .timeout(const Duration(seconds: 5));
+        if (res.statusCode == 200) {
+          isConnectedNotifier.value = true;
+        }
+        if (stock != prevStock) {
+          await http
+              .post(
+                Uri.parse('${ApiConfig.productsUrl}/$parsedId/adjust'),
+                headers: ApiConfig.defaultHeaders,
+                body: jsonEncode({
+                  'actual_stock': stock,
+                  'note': 'Edit produk dari aplikasi',
+                }),
+              )
+              .timeout(const Duration(seconds: 5));
+        }
+      } catch (_) {}
+    }
+
+    final updatedMap = <String, dynamic>{
+      if (idx != -1) ..._fallbackProducts[idx],
+      'id': idx != -1 ? _fallbackProducts[idx]['id'] : (id ?? DateTime.now().millisecondsSinceEpoch),
+      'name': trimmedName,
+      'price': price,
+      'selling_price': price,
+      'cost_price': effectiveCostPrice,
+      'stock': stock,
+      'initial_stock': effectiveInitialStock,
+      'min_stock': effectiveMinStock,
+      'unit': effectiveUnit,
+      'category': effectiveCategory,
+      'jenis': effectiveCategory,
+      'barcode': effectiveBarcode,
+      'weight': effectiveWeight,
+      'image': effectiveImage,
+    };
+    updatedMap['low'] = isLowStock(updatedMap);
+
+    if (idx != -1) {
+      _fallbackProducts[idx] = updatedMap;
+    } else {
+      _fallbackProducts.insert(0, updatedMap);
+    }
+
     dataChangedNotifier.value++;
     _persistLocalData();
     return true;
@@ -522,6 +729,95 @@ class ApiService {
     return true;
   }
 
+  static Map<String, dynamic> _normalizeTransactionItem(dynamic rawItem) {
+    if (rawItem is CartItem) {
+      final map = rawItem.toMap();
+      map['subtotal'] = rawItem.price * rawItem.qty;
+      return map;
+    }
+    final itemMap = rawItem is Map ? Map<String, dynamic>.from(rawItem) : <String, dynamic>{};
+    final productMap = itemMap['product'] is Map
+        ? Map<String, dynamic>.from(itemMap['product'] as Map)
+        : const <String, dynamic>{};
+
+    final int qty = (itemMap['qty'] as num?)?.toInt() ??
+        (itemMap['quantity'] as num?)?.toInt() ??
+        1;
+    final int price = (itemMap['price'] as num?)?.toInt() ??
+        (itemMap['unit_price'] as num?)?.toInt() ??
+        (productMap['selling_price'] as num?)?.toInt() ??
+        (productMap['price'] as num?)?.toInt() ??
+        0;
+    final int costPrice = (itemMap['cost_price'] as num?)?.toInt() ??
+        (productMap['cost_price'] as num?)?.toInt() ??
+        0;
+    final int subtotal = (itemMap['subtotal'] as num?)?.toInt() ?? (price * qty);
+    final String name = (itemMap['name'] ??
+            itemMap['item_name'] ??
+            productMap['name'] ??
+            'Item')
+        .toString();
+    final String unitRaw = (itemMap['unit'] ?? productMap['unit'] ?? '').toString().trim();
+    final String unit = unitRaw.isNotEmpty ? unitRaw : 'pcs';
+
+    return <String, dynamic>{
+      if (itemMap['product_id'] != null) 'product_id': itemMap['product_id'],
+      'name': name,
+      'price': price,
+      'cost_price': costPrice,
+      'qty': qty,
+      'unit': unit,
+      'subtotal': subtotal,
+      if ((itemMap['category'] ?? productMap['category']) != null)
+        'category': itemMap['category'] ?? productMap['category'],
+    };
+  }
+
+  static String _formatTrxTime(dynamic rawDate, dynamic fallbackTime) {
+    final s = rawDate?.toString().trim() ?? '';
+    if (s.isNotEmpty) {
+      final parsed = DateTime.tryParse(s);
+      if (parsed != null) {
+        final local = parsed.toLocal();
+        return '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+      }
+      final sepIdx = s.contains('T') ? s.indexOf('T') : s.indexOf(' ');
+      if (sepIdx != -1 && s.length >= sepIdx + 6) {
+        return s.substring(sepIdx + 1, sepIdx + 6);
+      }
+    }
+    final fb = fallbackTime?.toString().trim() ?? '';
+    return fb.isNotEmpty ? fb : '-';
+  }
+
+  static String _formatMethodLabel(String rawMethod) {
+    switch (rawMethod.trim().toLowerCase()) {
+      case 'cash':
+      case 'tunai':
+        return 'Tunai';
+      case 'qris':
+        return 'QRIS';
+      case 'transfer':
+        return 'Transfer';
+      case 'other':
+      case 'kasbon':
+        return 'Kasbon';
+      default:
+        return rawMethod.trim().isNotEmpty ? rawMethod.trim() : 'Tunai';
+    }
+  }
+
+  static List<Map<String, dynamic>> _normalizedLocalTransactions() {
+    return _fallbackTransactions.map((t) {
+      final copy = Map<String, dynamic>.from(t);
+      final rawItems = copy['cartItems'] is List
+          ? copy['cartItems'] as List
+          : (copy['items'] is List ? copy['items'] as List : const []);
+      copy['cartItems'] = rawItems.map(_normalizeTransactionItem).toList();
+      return copy;
+    }).toList();
+  }
+
   /// Ambil daftar transaksi dari backend Laravel atau fallback
   static Future<List<Map<String, dynamic>>> getTransactions() async {
     try {
@@ -540,29 +836,102 @@ class ApiService {
 
         if (rawList.isNotEmpty) {
           isConnectedNotifier.value = true;
-          return rawList.map((t) {
+          int maxRawIdInBatch = 0;
+          for (final t in rawList) {
+            if (t is Map) {
+              final int? rid = (t['id'] as num?)?.toInt();
+              if (rid != null && rid > maxRawIdInBatch) {
+                maxRawIdInBatch = rid;
+              }
+            }
+          }
+          // Jika ID transaksi tertinggi di server lebih kecil dari batas reset lama
+          // (misal setelah reset server atau migrate:fresh --seed), bersihkan batas reset.
+          if (maxRawIdInBatch > 0 &&
+              _transactionsResetMaxId > 0 &&
+              maxRawIdInBatch < _transactionsResetMaxId) {
+            _transactionsResetMaxId = 0;
+            _transactionsResetAt = null;
+          }
+
+          var filteredRawList = rawList.where((t) {
+            if (t is! Map) return false;
+            final int? rawId = (t['id'] as num?)?.toInt();
+            if (rawId != null) {
+              if (rawId > _lastFetchedMaxServerTxId) {
+                _lastFetchedMaxServerTxId = rawId;
+              }
+              if (_transactionsResetMaxId > 0 && rawId <= _transactionsResetMaxId) {
+                return false;
+              }
+            }
+            if (_transactionsResetAt != null) {
+              final rawTs = t['created_at']?.toString() ?? t['transaction_date']?.toString();
+              final parsedTs = rawTs != null ? DateTime.tryParse(rawTs)?.toUtc() : null;
+              if (parsedTs != null && !parsedTs.isAfter(_transactionsResetAt!)) {
+                return false;
+              }
+            }
+            return true;
+          }).toList();
+
+          if (filteredRawList.isEmpty && rawList.isNotEmpty) {
+            // Jika seluruh transaksi aktif di server terblokir oleh timestamp/ID reset lama,
+            // pulihkan daftar server agar transaksi tidak hilang di Overview/Profil/Analytics.
+            _transactionsResetMaxId = 0;
+            _transactionsResetAt = null;
+            filteredRawList = List.from(rawList);
+          }
+
+          final serverTransactions = filteredRawList.map((t) {
             final map = Map<String, dynamic>.from(t as Map);
-            final int amount = (map['total_amount'] as int?) ?? (map['amount'] as int?) ?? 0;
-            final String method = (map['payment_method'] ?? map['method'] ?? 'Tunai').toString();
+            final int amount = (map['total_amount'] as num?)?.toInt() ??
+                (map['amount'] as num?)?.toInt() ??
+                0;
+            final String method = _formatMethodLabel(
+              (map['payment_method'] ?? map['method'] ?? 'Tunai').toString(),
+            );
             final bool isCompleted = map['status'] == 'completed' || map['synced'] == true;
 
-            // Buat ringkasan item jika berasal dari relasi Laravel
             String itemsSummary = map['items'] is String ? map['items'] as String : '';
-            List cartItems = [];
+            List<Map<String, dynamic>> cartItems = [];
             if (map['items'] is List) {
-              cartItems = map['items'];
-              itemsSummary = (map['items'] as List).map((i) {
-                final qty = i['quantity'] ?? 1;
-                final pName = i['product']?['name'] ?? i['name'] ?? 'Item';
-                return '$qty $pName';
-              }).join(', ');
+              cartItems = (map['items'] as List).map(_normalizeTransactionItem).toList();
+            }
+
+            // Jika server menyimpan ringkasan direct_amount atau item kosong, gunakan detail lokal yang cocok bila ada
+            final localMatch = _fallbackTransactions.firstWhere(
+              (lt) =>
+                  (lt['raw_id'] != null && lt['raw_id'] == map['id']) ||
+                  (lt['cartItems'] is List &&
+                      (lt['cartItems'] as List).isNotEmpty &&
+                      (lt['amount'] as num?)?.toInt() == amount &&
+                      lt['items']?.toString() == map['note']?.toString()),
+              orElse: () => <String, dynamic>{},
+            );
+            if (localMatch.isNotEmpty &&
+                localMatch['cartItems'] is List &&
+                (localMatch['cartItems'] as List).isNotEmpty) {
+              final hasOnlyPlaceholder = cartItems.isEmpty ||
+                  (cartItems.length == 1 && cartItems.first['product_id'] == null);
+              if (hasOnlyPlaceholder) {
+                cartItems = (localMatch['cartItems'] as List)
+                    .map(_normalizeTransactionItem)
+                    .toList();
+              }
+            }
+
+            if (cartItems.isNotEmpty && itemsSummary.isEmpty) {
+              itemsSummary = cartItems
+                  .map((ci) => '${ci['name']} (${ci['qty']} ${ci['unit']})')
+                  .join(', ');
             }
 
             return {
               'id': map['id'] != null ? 'TRX-0${map['id']}' : 'TRX-${DateTime.now().millisecondsSinceEpoch}',
               'raw_id': map['id'],
               'date': map['transaction_date']?.toString() ?? map['created_at']?.toString() ?? map['date']?.toString() ?? '',
-              'time': map['transaction_date'] != null ? map['transaction_date'].toString().split('T').last.substring(0, 5) : (map['time'] ?? '-'),
+              'time': _formatTrxTime(map['transaction_date'] ?? map['created_at'], map['time']),
               'items': itemsSummary.isNotEmpty ? itemsSummary : 'Transaksi Penjualan',
               'method': method,
               'amount': amount,
@@ -570,17 +939,33 @@ class ApiService {
               'cartItems': cartItems,
             };
           }).toList();
+
+          final serverRawIds = serverTransactions
+              .map((s) => s['raw_id'])
+              .where((id) => id != null)
+              .toSet();
+          final localOnly = _normalizedLocalTransactions()
+              .where((lt) => lt['raw_id'] == null || !serverRawIds.contains(lt['raw_id']))
+              .where((lt) => lt['synced'] != true)
+              .toList();
+
+          final merged = [...localOnly, ...serverTransactions];
+          _fallbackTransactions
+            ..clear()
+            ..addAll(merged);
+          await _persistLocalData();
+          return merged;
         }
       }
 
       if (res.statusCode == 401) {
         _handleUnauthorized();
-        return List<Map<String, dynamic>>.from(_fallbackTransactions);
+        return _normalizedLocalTransactions();
       }
     } catch (_) {
       isConnectedNotifier.value = false;
     }
-    return List<Map<String, dynamic>>.from(_fallbackTransactions);
+    return _normalizedLocalTransactions();
   }
 
   /// Catat transaksi baru ke backend Laravel (dengan validasi stok)
@@ -590,24 +975,58 @@ class ApiService {
     required String paymentMethod,
     required int totalAmount,
   }) async {
-    // Validasi stok lokal sebelum memproses transaksi
+    // Validasi stok lokal (gabungkan total qty per produk) sebelum memproses transaksi
+    final Map<String, int> requestedByKey = {};
+    final Map<String, dynamic> pidByKey = {};
+    final Map<String, String> displayNameByKey = {};
+    final Map<String, int?> maxStockByKey = {};
+
     for (final item in cartItems) {
-      final String name = (item.runtimeType.toString() == 'CartItem')
-          ? (item as dynamic).name
-          : (item['name'] as String? ?? '');
-      final int qty = (item.runtimeType.toString() == 'CartItem')
-          ? (item as dynamic).qty
-          : ((item['qty'] as int?) ?? 1);
-      final idx = _fallbackProducts.indexWhere(
-        (p) => (p['name'] as String).toLowerCase() == name.toLowerCase(),
-      );
-      if (idx != -1) {
-        final availableStock = (_fallbackProducts[idx]['stock'] as int?) ?? 0;
-        if (qty > availableStock) {
-          lastErrorNotifier.value =
-              'Stok $name tidak mencukupi (tersisa $availableStock, diminta $qty).';
-          return false;
+      final dynamic pid = (item is CartItem)
+          ? item.productId
+          : (item is Map ? (item['product_id'] ?? item['id']) : null);
+      final String name = ((item is CartItem)
+              ? item.name
+              : (item is Map ? (item['name']?.toString() ?? '') : ''))
+          .trim();
+      final int qty = (item is CartItem)
+          ? item.qty
+          : (item is Map ? ((item['qty'] as num?)?.toInt() ?? (item['quantity'] as num?)?.toInt() ?? 1) : 1);
+      final int? maxStock = (item is CartItem)
+          ? item.maxStock
+          : (item is Map ? (item['max_stock'] as num?)?.toInt() : null);
+
+      final String key = pid != null ? 'id:$pid' : 'name:${name.toLowerCase()}';
+      requestedByKey[key] = (requestedByKey[key] ?? 0) + qty;
+      pidByKey[key] = pid;
+      displayNameByKey[key] = name;
+      if (maxStock != null) {
+        maxStockByKey[key] = maxStock;
+      }
+    }
+
+    for (final entry in requestedByKey.entries) {
+      final String key = entry.key;
+      final int qty = entry.value;
+      final dynamic pid = pidByKey[key];
+      final String name = displayNameByKey[key] ?? '';
+
+      final idx = _fallbackProducts.indexWhere((p) {
+        if (pid != null && p['id'] != null && p['id'].toString() == pid.toString()) {
+          return true;
         }
+        return (p['name']?.toString().trim().toLowerCase() ?? '') == name.toLowerCase();
+      });
+
+      final int? availableStock = idx != -1
+          ? (_fallbackProducts[idx]['stock'] as num?)?.toInt() ?? 0
+          : maxStockByKey[key];
+
+      if (availableStock != null && qty > availableStock) {
+        lastErrorNotifier.value = availableStock <= 0
+            ? 'Stok $name sudah habis (0).'
+            : 'Stok $name tidak mencukupi (tersisa $availableStock, diminta $qty).';
+        return false;
       }
     }
 
@@ -624,6 +1043,9 @@ class ApiService {
       backendMethod = 'other';
     }
 
+    dynamic createdTxId;
+    bool serverSynced = false;
+
     try {
       final uri = Uri.parse(ApiConfig.transactionsUrl);
 
@@ -632,24 +1054,92 @@ class ApiService {
       for (final item in cartItems) {
         dynamic pId;
         int qty = 1;
+        String itemName = '';
+        int itemPrice = 0;
+        int itemCost = 0;
+        String itemUnit = 'pcs';
+        String itemCategory = 'Umum';
 
-        if (item.runtimeType.toString() == 'CartItem') {
-          qty = (item as dynamic).qty;
-          pId = (item as dynamic).productId;
-          if (pId == null) {
-            final match = _fallbackProducts.firstWhere(
-              (p) => (p['name'] as String).toLowerCase() == (item as dynamic).name.toLowerCase(),
-              orElse: () => {},
-            );
-            pId = match['id'];
-          }
+        if (item is CartItem) {
+          qty = item.qty;
+          pId = item.productId;
+          itemName = item.name.trim();
+          itemPrice = item.price;
+          itemCost = item.costPrice;
+          itemUnit = item.unit;
+          itemCategory = (item.category ?? 'Umum').trim();
         } else if (item is Map) {
-          qty = (item['qty'] as int?) ?? 1;
+          qty = (item['qty'] as num?)?.toInt() ?? (item['quantity'] as num?)?.toInt() ?? 1;
           pId = item['product_id'] ?? item['id'];
+          itemName = (item['name'] ?? '').toString().trim();
+          itemPrice = (item['price'] as num?)?.toInt() ?? 0;
+          itemCost = (item['cost_price'] as num?)?.toInt() ?? 0;
+          itemUnit = (item['unit'] ?? 'pcs').toString();
+          itemCategory = (item['category'] ?? item['jenis'] ?? 'Umum').toString();
         }
 
-        if (pId is int) {
-          laravelItems.add({'product_id': pId, 'quantity': qty});
+        Map<String, dynamic>? localProduct;
+        if (itemName.isNotEmpty) {
+          final idx = _fallbackProducts.indexWhere(
+            (p) => ((p['name'] as String?) ?? '').toLowerCase() == itemName.toLowerCase(),
+          );
+          if (idx != -1) {
+            localProduct = _fallbackProducts[idx];
+            pId ??= localProduct['id'];
+            if (itemPrice <= 0) itemPrice = (localProduct['price'] as num?)?.toInt() ?? 0;
+            if (itemCost <= 0) itemCost = (localProduct['cost_price'] as num?)?.toInt() ?? 0;
+            if (itemUnit.isEmpty) itemUnit = (localProduct['unit'] ?? 'pcs').toString();
+            if (itemCategory.isEmpty) {
+              itemCategory = (localProduct['category'] ?? localProduct['jenis'] ?? 'Umum').toString();
+            }
+          }
+        }
+
+        int? parsedPid = pId is int ? pId : (pId is String ? int.tryParse(pId) : null);
+        // Jika produk baru masih ber-ID lokal (timestamp > 2^31-1) atau belum punya ID server,
+        // sinkronkan produk ke server terlebih dahulu agar tercatat di Produk Terlaris (top_products).
+        if ((parsedPid == null || parsedPid <= 0 || parsedPid > 2147483647) &&
+            itemName.isNotEmpty &&
+            itemPrice > 0) {
+          try {
+            final int? categoryId = await _resolveCategoryId(itemCategory);
+            final int currentStock = (localProduct?['stock'] as num?)?.toInt() ?? qty;
+            final int stockToSync = currentStock < qty ? qty : currentStock;
+            final createProdRes = await http
+                .post(
+                  Uri.parse(ApiConfig.productsUrl),
+                  headers: ApiConfig.defaultHeaders,
+                  body: jsonEncode({
+                    'name': itemName,
+                    'unit': itemUnit.isNotEmpty ? itemUnit : 'pcs',
+                    'cost_price': itemCost,
+                    'selling_price': itemPrice,
+                    'price': itemPrice,
+                    'stock': stockToSync,
+                    'min_stock': stockToSync > 0 ? ((stockToSync - 1) ~/ 2) : 0,
+                    'category_id': ?categoryId,
+                  }),
+                )
+                .timeout(const Duration(seconds: 4));
+            if (createProdRes.statusCode == 200 || createProdRes.statusCode == 201) {
+              final createdBody = jsonDecode(createProdRes.body);
+              if (createdBody is Map) {
+                final serverObj = createdBody['data'] is Map ? createdBody['data'] : createdBody;
+                final int? newServerPid = (serverObj['id'] as num?)?.toInt();
+                if (newServerPid != null && newServerPid > 0) {
+                  parsedPid = newServerPid;
+                  if (localProduct != null) {
+                    localProduct['id'] = newServerPid;
+                  }
+                }
+              }
+            }
+          } catch (_) {}
+        }
+
+        // ID <= 2^31-1 adalah ID produk valid di DB server
+        if (parsedPid != null && parsedPid > 0 && parsedPid <= 2147483647) {
+          laravelItems.add({'product_id': parsedPid, 'quantity': qty});
         }
       }
 
@@ -678,18 +1168,21 @@ class ApiService {
         try {
           final created = jsonDecode(res.body);
           final txId = created is Map ? (created['id'] ?? created['data']?['id']) : null;
+          createdTxId = txId;
           if (txId != null) {
-            final confirmUri = backendMethod == 'cash'
-                ? Uri.parse(ApiConfig.payCashUrl(txId))
-                : Uri.parse('${ApiConfig.transactionsUrl}/$txId/confirm');
+            // Aplikasi pencatatan hanya menyimpan transaksi (tanpa input uang tunai diterima),
+            // sehingga semua metode (Tunai/QRIS/Kasbon) dikonfirmasi seragam via /confirm.
+            final confirmUri = Uri.parse('${ApiConfig.transactionsUrl}/$txId/confirm');
             final confirmRes = await http
                 .post(
                   confirmUri,
                   headers: ApiConfig.defaultHeaders,
-                  body: jsonEncode({'paid_amount': totalAmount, 'payment_method': backendMethod}),
+                  body: jsonEncode({'payment_method': backendMethod}),
                 )
                 .timeout(const Duration(seconds: 5));
-            if (confirmRes.statusCode == 422) {
+            if (confirmRes.statusCode == 200) {
+              serverSynced = true;
+            } else if (confirmRes.statusCode == 422) {
               final errBody = jsonDecode(confirmRes.body);
               lastErrorNotifier.value = errBody['message']?.toString() ?? 'Stok di server tidak mencukupi.';
               return false;
@@ -707,13 +1200,26 @@ class ApiService {
 
     // Deduct stock from fallbackProducts & update low stock status (< 50% dari initial_stock)
     for (final item in cartItems) {
-      final String name = (item.runtimeType.toString() == 'CartItem') ? (item as dynamic).name : (item['name'] as String? ?? '');
-      final int qty = (item.runtimeType.toString() == 'CartItem') ? (item as dynamic).qty : ((item['qty'] as int?) ?? 1);
+      final dynamic pid = (item is CartItem)
+          ? item.productId
+          : (item is Map ? (item['product_id'] ?? item['id']) : null);
+      final String name = ((item is CartItem)
+              ? item.name
+              : (item is Map ? (item['name']?.toString() ?? '') : ''))
+          .trim();
+      final int qty = (item is CartItem)
+          ? item.qty
+          : (item is Map ? ((item['qty'] as num?)?.toInt() ?? (item['quantity'] as num?)?.toInt() ?? 1) : 1);
 
-      final idx = _fallbackProducts.indexWhere((p) => (p['name'] as String).toLowerCase() == name.toLowerCase());
+      final idx = _fallbackProducts.indexWhere((p) {
+        if (pid != null && p['id'] != null && p['id'].toString() == pid.toString()) {
+          return true;
+        }
+        return (p['name']?.toString().trim().toLowerCase() ?? '') == name.toLowerCase();
+      });
       if (idx != -1) {
-        final currentStock = (_fallbackProducts[idx]['stock'] as int?) ?? 0;
-        final initialStock = (_fallbackProducts[idx]['initial_stock'] as int?) ?? currentStock;
+        final currentStock = (_fallbackProducts[idx]['stock'] as num?)?.toInt() ?? 0;
+        final initialStock = (_fallbackProducts[idx]['initial_stock'] as num?)?.toInt() ?? currentStock;
         final newStock = (currentStock - qty).clamp(0, 999999);
         _fallbackProducts[idx]['initial_stock'] = initialStock;
         _fallbackProducts[idx]['stock'] = newStock;
@@ -721,42 +1227,45 @@ class ApiService {
       }
     }
 
-    // Fallback lokal jika offline
+    // Simpan rincian produk transaksi secara lengkap di cache lokal & SharedPreferences
     final now = DateTime.now();
     final timeStr =
         '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
 
     final serializedItems = cartItems.map((i) {
-      final Map<String, dynamic> map = (i.runtimeType.toString() == 'CartItem')
-          ? Map<String, dynamic>.from((i as dynamic).toMap() as Map)
-          : Map<String, dynamic>.from(i as Map);
+      final Map<String, dynamic> map = _normalizeTransactionItem(i);
       final String pName = (map['name'] ?? '').toString();
       final match = _fallbackProducts.firstWhere(
         (p) => (p['name'] as String? ?? '').toLowerCase() == pName.toLowerCase(),
         orElse: () => <String, dynamic>{},
       );
       if (match.isNotEmpty) {
-        map['cost_price'] = (map['cost_price'] as num?)?.toInt() ?? (match['cost_price'] as num?)?.toInt() ?? 0;
-        map['unit'] = (map['unit']?.toString().isNotEmpty == true) ? map['unit'] : (match['unit'] ?? 'pcs');
-        map['category'] = (map['category']?.toString().isNotEmpty == true)
-            ? map['category']
-            : (match['category'] ?? match['jenis'] ?? 'Umum');
+        if (((map['cost_price'] as num?)?.toInt() ?? 0) == 0) {
+          map['cost_price'] = (match['cost_price'] as num?)?.toInt() ?? 0;
+        }
+        if (map['unit'] == null || map['unit'].toString().isEmpty) {
+          map['unit'] = match['unit'] ?? 'pcs';
+        }
+        if (map['category'] == null || map['category'].toString().isEmpty) {
+          map['category'] = match['category'] ?? match['jenis'] ?? 'Umum';
+        }
       }
       return map;
     }).toList();
 
     _fallbackTransactions.insert(0, {
-      'id': 'TRX-0${_fallbackTransactions.length + 1}',
+      'id': createdTxId != null ? 'TRX-0$createdTxId' : 'TRX-0${_fallbackTransactions.length + 1}',
+      if (createdTxId != null) 'raw_id': createdTxId,
       'time': timeStr,
       'date': now.toIso8601String().substring(0, 10),
       'items': itemsSummary,
       'method': paymentMethod,
       'amount': totalAmount,
-      'synced': paymentMethod.toLowerCase() == 'tunai',
+      'synced': serverSynced || paymentMethod.toLowerCase() == 'tunai',
       'cartItems': serializedItems,
     });
     dataChangedNotifier.value++;
-    _persistLocalData();
+    await _persistLocalData();
     return true;
   }
 
@@ -765,6 +1274,11 @@ class ApiService {
     final int localOmzet = _fallbackTransactions.fold(0, (sum, t) => sum + ((t['amount'] as int?) ?? 0));
     final int localTotalTrx = _fallbackTransactions.length;
     final int localStokMenipis = _fallbackProducts.where((p) => isLowStock(p)).length;
+    final List<Map<String, dynamic>> localTopProducts =
+        (_localSalesTrends()['top_products'] as List?)
+                ?.map((e) => Map<String, dynamic>.from(e as Map))
+                .toList() ??
+            <Map<String, dynamic>>[];
 
     try {
       final uri = Uri.parse(ApiConfig.dashboardUrl);
@@ -783,9 +1297,14 @@ class ApiService {
           final int totalTrx = localTotalTrx > serverTotalTrx ? localTotalTrx : serverTotalTrx;
           final int stokMenipis = _fallbackProducts.isNotEmpty ? localStokMenipis : serverStokMenipis;
 
+          final List<Map<String, dynamic>> mergedTopProducts = _mergeTopProducts(
+            body['top_products'],
+            localTopProducts,
+          );
+
           String produkTerlaris = '-';
-          if (body['top_products'] is List && (body['top_products'] as List).isNotEmpty) {
-            produkTerlaris = body['top_products'][0]['name'] ?? '-';
+          if (mergedTopProducts.isNotEmpty) {
+            produkTerlaris = mergedTopProducts.first['name']?.toString() ?? '-';
           } else if (body['produk_terlaris'] != null) {
             produkTerlaris = body['produk_terlaris'].toString();
           }
@@ -796,6 +1315,7 @@ class ApiService {
             'omzet': omzet,
             'total_transaksi': totalTrx,
             'produk_terlaris': produkTerlaris,
+            'top_products': mergedTopProducts,
             'stok_menipis': stokMenipis,
             'total_produk': totalProduk,
             'raw': body,
@@ -816,31 +1336,76 @@ class ApiService {
     int totalProduk = _fallbackProducts.length;
     int stokMenipis = localStokMenipis;
 
-    Map<String, int> productSales = {};
-    for (final t in _fallbackTransactions) {
-      final items = t['cartItems'] as List? ?? [];
-      for (final item in items) {
-        final name = item['name'] as String? ?? '';
-        final qty = (item['qty'] as int?) ?? 1;
-        if (name.isNotEmpty) {
-          productSales[name] = (productSales[name] ?? 0) + qty;
-        }
-      }
-    }
-
     String produkTerlaris = '-';
-    if (productSales.isNotEmpty) {
-      final sorted = productSales.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
-      produkTerlaris = sorted.first.key;
+    if (localTopProducts.isNotEmpty) {
+      produkTerlaris = localTopProducts.first['name']?.toString() ?? '-';
     }
 
     return {
       'omzet': omzet,
       'total_transaksi': totalTrx,
       'produk_terlaris': produkTerlaris,
+      'top_products': localTopProducts,
       'stok_menipis': stokMenipis,
       'total_produk': totalProduk,
     };
+  }
+
+  /// Gabungkan daftar produk terlaris dari server dan lokal berdasarkan jumlah terjual tertinggi (total_sold).
+  static List<Map<String, dynamic>> _mergeTopProducts(
+    dynamic serverRaw,
+    List<Map<String, dynamic>> localTop,
+  ) {
+    final Map<String, Map<String, dynamic>> byName = {};
+
+    if (serverRaw is List) {
+      for (final item in serverRaw) {
+        if (item is Map) {
+          final String name = (item['name'] ?? '').toString().trim();
+          if (name.isEmpty) continue;
+          final String key = name.toLowerCase();
+          byName[key] = {
+            'product_id': item['product_id'],
+            'name': name,
+            'unit': (item['unit'] ?? 'pcs').toString(),
+            'category': (item['category'] ?? '').toString(),
+            'total_sold': (item['total_sold'] as num?)?.toInt() ?? 0,
+            'total_revenue': (item['total_revenue'] as num?)?.toInt() ?? 0,
+          };
+        }
+      }
+    }
+
+    for (final local in localTop) {
+      final String name = (local['name'] ?? '').toString().trim();
+      if (name.isEmpty) continue;
+      final String key = name.toLowerCase();
+      final int localSold = (local['total_sold'] as num?)?.toInt() ?? 0;
+      final int localRev = (local['total_revenue'] as num?)?.toInt() ?? 0;
+      final existing = byName[key];
+      if (existing == null || localSold > ((existing['total_sold'] as num?)?.toInt() ?? 0)) {
+        byName[key] = {
+          'product_id': existing?['product_id'] ?? local['product_id'],
+          'name': name,
+          'unit': (local['unit'] ?? existing?['unit'] ?? 'pcs').toString(),
+          'category': (local['category'] ?? existing?['category'] ?? '').toString(),
+          'total_sold': localSold,
+          'total_revenue': localRev > ((existing?['total_revenue'] as num?)?.toInt() ?? 0)
+              ? localRev
+              : ((existing?['total_revenue'] as num?)?.toInt() ?? 0),
+        };
+      }
+    }
+
+    final merged = byName.values.where((p) => ((p['total_sold'] as num?)?.toInt() ?? 0) > 0).toList()
+      ..sort((a, b) {
+        final int cmpSold = ((b['total_sold'] as num?)?.toInt() ?? 0)
+            .compareTo((a['total_sold'] as num?)?.toInt() ?? 0);
+        if (cmpSold != 0) return cmpSold;
+        return ((b['total_revenue'] as num?)?.toInt() ?? 0)
+            .compareTo((a['total_revenue'] as num?)?.toInt() ?? 0);
+      });
+    return merged.take(5).toList();
   }
 
   /// Ambil laporan laba-rugi (penjualan vs pembelian/beban) dari backend
@@ -950,6 +1515,13 @@ class ApiService {
   /// Ambil tren penjualan (7 hari / 30 hari / bulanan) & produk terlaris
   /// dari backend (endpoint dashboard/summary). Fallback lokal jika offline.
   static Future<Map<String, dynamic>> getSalesTrends() async {
+    final localTrends = _localSalesTrends();
+    final List<Map<String, dynamic>> localTop =
+        (localTrends['top_products'] as List?)
+                ?.map((e) => Map<String, dynamic>.from(e as Map))
+                .toList() ??
+            <Map<String, dynamic>>[];
+
     try {
       final uri = Uri.parse(ApiConfig.dashboardUrl);
       final res = await http.get(uri, headers: ApiConfig.defaultHeaders).timeout(const Duration(seconds: 5));
@@ -960,11 +1532,28 @@ class ApiService {
           isConnectedNotifier.value = true;
           lastErrorNotifier.value = null;
           final trend = body['sales_trend'];
+          final List serverTrend7 = (trend is Map && trend['last_7_days'] is List)
+              ? trend['last_7_days'] as List
+              : <dynamic>[];
+          final List serverTrend30 = (trend is Map && trend['last_30_days'] is List)
+              ? trend['last_30_days'] as List
+              : <dynamic>[];
+          final List serverMonthly = (trend is Map && trend['monthly'] is List)
+              ? trend['monthly'] as List
+              : <dynamic>[];
+
+          int sumSold(List list) => list.fold<int>(
+                0,
+                (s, e) => s + (e is Map ? ((e['sold'] ?? e['total'] ?? 0) as num).toInt() : 0),
+              );
+
+          final mergedTop = _mergeTopProducts(body['top_products'], localTop);
+
           return {
-            'trend7': (trend is Map ? trend['last_7_days'] : null) ?? <dynamic>[],
-            'trend30': (trend is Map ? trend['last_30_days'] : null) ?? <dynamic>[],
-            'monthly': (trend is Map ? trend['monthly'] : null) ?? <dynamic>[],
-            'top_products': body['top_products'] ?? <dynamic>[],
+            'trend7': sumSold(serverTrend7) > 0 ? serverTrend7 : (localTrends['trend7'] ?? serverTrend7),
+            'trend30': sumSold(serverTrend30) > 0 ? serverTrend30 : (localTrends['trend30'] ?? serverTrend30),
+            'monthly': sumSold(serverMonthly) > 0 ? serverMonthly : (localTrends['monthly'] ?? serverMonthly),
+            'top_products': mergedTop,
             'today': body['today'] ?? <String, dynamic>{},
           };
         }
@@ -977,32 +1566,32 @@ class ApiService {
       isConnectedNotifier.value = false;
     }
 
-    return _localSalesTrends();
+    return localTrends;
   }
 
-  /// Kalkulasi tren dari transaksi fallback lokal (mode offline)
+  /// Kalkulasi tren produk terjual dari transaksi fallback lokal (mode offline)
   static Map<String, dynamic> _localSalesTrends() {
     final byDay = <String, int>{};
     final byMonth = <String, int>{};
+    final revByDay = <String, int>{};
+    final revByMonth = <String, int>{};
+    final countByDay = <String, int>{};
+    final countByMonth = <String, int>{};
     final Map<String, Map<String, dynamic>> productAgg = {};
 
     for (final t in _fallbackTransactions) {
       final int amount = (t['amount'] as int?) ?? 0;
       final String date = t['date']?.toString() ?? '';
-      if (date.isNotEmpty) {
-        byDay[date] = (byDay[date] ?? 0) + amount;
-        if (date.length >= 7) {
-          final monthKey = date.substring(0, 7);
-          byMonth[monthKey] = (byMonth[monthKey] ?? 0) + amount;
-        }
-      }
-
       final items = t['cartItems'] as List? ?? [];
+      int trxSold = 0;
+
       for (final item in items) {
         if (item is Map) {
+          final int qty = (item['qty'] as num?)?.toInt() ?? (item['quantity'] as num?)?.toInt() ?? 1;
+          trxSold += qty;
+
           final String name = (item['name'] ?? '').toString();
           if (name.isEmpty) continue;
-          final int qty = (item['qty'] as num?)?.toInt() ?? (item['quantity'] as num?)?.toInt() ?? 1;
           final int price = (item['price'] as num?)?.toInt() ?? (item['unit_price'] as num?)?.toInt() ?? 0;
           final String unit = (item['unit'] ?? 'pcs').toString();
           final current = productAgg[name] ?? {
@@ -1016,52 +1605,138 @@ class ApiService {
           productAgg[name] = current;
         }
       }
+
+      if (trxSold == 0 && amount > 0) {
+        trxSold = 1;
+      }
+
+      if (date.isNotEmpty) {
+        byDay[date] = (byDay[date] ?? 0) + trxSold;
+        revByDay[date] = (revByDay[date] ?? 0) + amount;
+        countByDay[date] = (countByDay[date] ?? 0) + 1;
+        if (date.length >= 7) {
+          final monthKey = date.substring(0, 7);
+          byMonth[monthKey] = (byMonth[monthKey] ?? 0) + trxSold;
+          revByMonth[monthKey] = (revByMonth[monthKey] ?? 0) + amount;
+          countByMonth[monthKey] = (countByMonth[monthKey] ?? 0) + 1;
+        }
+      }
     }
 
     final topProducts = productAgg.values.toList()
       ..sort((a, b) => (b['total_sold'] as int).compareTo(a['total_sold'] as int));
 
-    List<Map<String, dynamic>> toList(Map<String, int> source, String keyName) {
-      final keys = source.keys.toList()..sort();
-      return keys.map((k) => {keyName: k, 'total': source[k], 'count': 0}).toList();
+    List<Map<String, dynamic>> toList(
+      Map<String, int> soldMap,
+      Map<String, int> revMap,
+      Map<String, int> countMap,
+      String keyName,
+    ) {
+      final keys = soldMap.keys.toList()..sort();
+      return keys
+          .map((k) => {
+                keyName: k,
+                'total': soldMap[k] ?? 0,
+                'sold': soldMap[k] ?? 0,
+                'revenue': revMap[k] ?? 0,
+                'count': countMap[k] ?? 0,
+              })
+          .toList();
     }
 
     return {
       'offline': true,
-      'trend7': toList(byDay, 'date'),
-      'trend30': toList(byDay, 'date'),
-      'monthly': toList(byMonth, 'month'),
+      'trend7': toList(byDay, revByDay, countByDay, 'date'),
+      'trend30': toList(byDay, revByDay, countByDay, 'date'),
+      'monthly': toList(byMonth, revByMonth, countByMonth, 'month'),
       'top_products': topProducts.take(5).toList(),
       'today': <String, dynamic>{},
     };
   }
 
+  /// Filter daftar transaksi berdasarkan periode unduhan:
+  /// 'semua', 'minggu' (7 hari terakhir), 'bulan' (bulan berjalan), 'tahun' (tahun berjalan).
+  static List<Map<String, dynamic>> filterTransactionsByPeriod(
+    List<Map<String, dynamic>> transactions,
+    String period, {
+    DateTime? referenceDate,
+  }) {
+    final normalized = period.trim().toLowerCase();
+    if (normalized.isEmpty || normalized == 'semua' || normalized == 'all') {
+      return List<Map<String, dynamic>>.from(transactions);
+    }
+
+    final now = (referenceDate ?? DateTime.now()).toLocal();
+    late final DateTime start;
+    late final DateTime end;
+
+    if (normalized == 'minggu' || normalized == 'perminggu' || normalized == 'weekly') {
+      start = DateTime(now.year, now.month, now.day).subtract(const Duration(days: 6));
+      end = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+    } else if (normalized == 'bulan' || normalized == 'perbulan' || normalized == 'monthly') {
+      start = DateTime(now.year, now.month, 1);
+      end = DateTime(now.year, now.month + 1, 0, 23, 59, 59, 999);
+    } else if (normalized == 'tahun' || normalized == 'pertahun' || normalized == 'yearly') {
+      start = DateTime(now.year, 1, 1);
+      end = DateTime(now.year, 12, 31, 23, 59, 59, 999);
+    } else {
+      return List<Map<String, dynamic>>.from(transactions);
+    }
+
+    return transactions.where((trx) {
+      final rawDate = (trx['transaction_date'] ?? trx['created_at'] ?? trx['date'])?.toString().trim() ?? '';
+      if (rawDate.isEmpty) return false;
+      final parsed = DateTime.tryParse(rawDate);
+      if (parsed == null) return false;
+      final localDate = (rawDate.contains('T') || rawDate.contains(':')) ? parsed.toLocal() : parsed;
+      return !localDate.isBefore(start) && !localDate.isAfter(end);
+    }).toList();
+  }
+
   /// Buat data export CSV untuk fitur Cadangkan Data (P0):
-  /// ID Transaksi, Waktu Transaksi, Jenis Pembayaran, Harga Satuan Produk (IDR), Total Transaksi (IDR).
+  /// Menggunakan header `sep=,` dan CRLF agar Excel di Windows otomatis memisah kolom ke sel berbeda.
   static String buildTransactionsExportCsv(List<Map<String, dynamic>> transactions) {
     String csvEscape(dynamic val) {
       final s = (val ?? '').toString().replaceAll('"', '""');
       return '"$s"';
     }
 
+    String formatExportWaktu(String datePart, String timePart) {
+      if (datePart.isNotEmpty) {
+        final parsed = DateTime.tryParse(datePart);
+        if (parsed != null && (datePart.contains('T') || datePart.contains(':'))) {
+          final local = parsed.toLocal();
+          final y = local.year.toString().padLeft(4, '0');
+          final m = local.month.toString().padLeft(2, '0');
+          final d = local.day.toString().padLeft(2, '0');
+          final hh = local.hour.toString().padLeft(2, '0');
+          final mm = local.minute.toString().padLeft(2, '0');
+          return '$y-$m-$d $hh:$mm';
+        }
+        return (datePart.contains('T') || datePart.contains(' '))
+            ? datePart
+            : '$datePart $timePart';
+      }
+      return timePart;
+    }
+
     final buffer = StringBuffer();
-    buffer.writeln(
-      'id_transaksi,waktu_transaksi,jenis_pembayaran,nama_produk,qty,harga_satuan_idr,total_transaksi_idr',
+    buffer.write('sep=,\r\n');
+    buffer.write(
+      'id_transaksi,waktu_transaksi,jenis_pembayaran,nama_produk,qty,harga_satuan_idr,total_transaksi_idr\r\n',
     );
 
     for (final trx in transactions) {
       final id = trx['id'] ?? '-';
       final datePart = trx['date']?.toString() ?? '';
       final timePart = trx['time']?.toString() ?? '-';
-      final waktu = datePart.isNotEmpty
-          ? (datePart.contains('T') || datePart.contains(' ') ? datePart : '$datePart $timePart')
-          : timePart;
+      final waktu = formatExportWaktu(datePart, timePart);
       final method = trx['method'] ?? '-';
       final totalIdr = trx['amount'] ?? 0;
       final items = trx['cartItems'] as List? ?? [];
 
       if (items.isEmpty) {
-        buffer.writeln([
+        final row = [
           csvEscape(id),
           csvEscape(waktu),
           csvEscape(method),
@@ -1069,14 +1744,15 @@ class ApiService {
           1,
           totalIdr,
           totalIdr,
-        ].join(','));
+        ].join(',');
+        buffer.write('$row\r\n');
       } else {
         for (final item in items) {
           if (item is Map) {
-            final pName = item['product']?['name'] ?? item['name'] ?? 'Item';
-            final qty = item['quantity'] ?? item['qty'] ?? 1;
-            final unitPrice = item['unit_price'] ?? item['price'] ?? item['product']?['selling_price'] ?? 0;
-            buffer.writeln([
+            final pName = item['name'] ?? item['item_name'] ?? item['product']?['name'] ?? 'Item';
+            final qty = item['qty'] ?? item['quantity'] ?? 1;
+            final unitPrice = item['price'] ?? item['unit_price'] ?? item['product']?['selling_price'] ?? 0;
+            final row = [
               csvEscape(id),
               csvEscape(waktu),
               csvEscape(method),
@@ -1084,7 +1760,8 @@ class ApiService {
               qty,
               unitPrice,
               totalIdr,
-            ].join(','));
+            ].join(',');
+            buffer.write('$row\r\n');
           }
         }
       }

@@ -25,9 +25,10 @@ void main() {
     expect(find.text('Keranjang Masih Kosong'), findsOneWidget);
     expect(find.text('Lihat Katalog Produk'), findsOneWidget);
 
-    // Verify customer card defaults to Pelanggan Umum
-    expect(find.text('Pelanggan'), findsOneWidget);
-    expect(find.text('Pelanggan Umum'), findsOneWidget);
+    // Verify customer card has been removed
+    expect(find.text('Pelanggan'), findsNothing);
+    expect(find.text('Pelanggan Umum'), findsNothing);
+    expect(find.text('Ganti'), findsNothing);
 
     // Verify payment methods are present
     expect(find.text('Tunai'), findsOneWidget);
@@ -37,7 +38,7 @@ void main() {
     // Verify payment summary shows 0 items and Rp0
     expect(find.text('Subtotal (0 item)'), findsOneWidget);
     expect(find.text('Diskon'), findsOneWidget);
-    expect(find.text('Total Bayar'), findsOneWidget);
+    expect(find.text('Total'), findsOneWidget);
     expect(find.text('Rp0'), findsWidgets);
 
     // Verify pay button is disabled with empty cart text
@@ -66,7 +67,7 @@ void main() {
     expect(find.text('Rp65.000'), findsWidgets);
 
     // Button should now be active with total
-    expect(find.text('Bayar  Rp65.000'), findsOneWidget);
+    expect(find.text('Simpan'), findsOneWidget);
 
     // Increment item quantity
     await tester.tap(find.byIcon(Icons.add));
@@ -74,7 +75,8 @@ void main() {
 
     expect(find.text('2'), findsOneWidget);
     expect(find.text('Subtotal (2 item)'), findsOneWidget);
-    expect(find.text('Bayar  Rp130.000'), findsOneWidget);
+    expect(find.text('Rp130.000'), findsWidgets);
+    expect(find.text('Simpan'), findsOneWidget);
 
     // Tap "Kosongkan" button in header
     expect(find.text('Kosongkan'), findsOneWidget);
@@ -115,6 +117,37 @@ void main() {
     // Attempt to add when stock is 0 -> blocked!
     final addedZero = CartService.addItem('Gula Habis', 15000, 'pcs', maxStock: 0);
     expect(addedZero, isFalse);
+  });
+
+  testWidgets('Checkout diblokir dengan peringatan jika qty di keranjang melebihi stok terbaru',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: KeranjangPage(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Simulasikan item masuk ke keranjang melebihi batas (misal stok diperbarui turun ke 2)
+    CartService.cartNotifier.value = [
+      CartItem(
+        name: 'Minyak Goreng 1L',
+        price: 18000,
+        unit: 'pcs',
+        maxStock: 2,
+        qty: 5,
+      ),
+    ];
+    await tester.pumpAndSettle();
+
+    expect(find.text('Melebihi stok! Tersisa 2 pcs'), findsOneWidget);
+
+    // Tekan Simpan -> harus ditolak dengan peringatan dan dialog sukses tidak muncul
+    await tester.tap(find.text('Simpan'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Transaksi Tersimpan!'), findsNothing);
+    expect(find.textContaining('Stok Minyak Goreng 1L tidak mencukupi'), findsOneWidget);
   });
 }
 

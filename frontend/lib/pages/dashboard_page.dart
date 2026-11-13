@@ -143,43 +143,99 @@ class _DashboardPageState extends State<DashboardPage> {
     return filteredRev;
   }
 
-  List<Map<String, dynamic>> get _topCategories {
-    final Map<String, Map<String, dynamic>> catMap = {};
-    for (final t in _filteredTransactions) {
+  List<Map<String, dynamic>> get _topSellers {
+    final Map<String, Map<String, dynamic>> productMap = {};
+    final txSource = _filteredTransactions.isNotEmpty ? _filteredTransactions : _transactions;
+    for (final t in txSource) {
       final items = t['cartItems'] as List? ?? [];
       if (items.isNotEmpty) {
         for (final item in items) {
           if (item is Map) {
-            final String pName = (item['name'] ?? '').toString();
+            final String pName = (item['name'] ?? '').toString().trim();
+            if (pName.isEmpty) continue;
             final int qty = (item['qty'] as num?)?.toInt() ?? (item['quantity'] as num?)?.toInt() ?? 1;
             final int price = (item['price'] as num?)?.toInt() ?? (item['unit_price'] as num?)?.toInt() ?? 0;
-            String cat = (item['category'] ?? '').toString();
-            if (cat.isEmpty) {
+            String unit = (item['unit'] ?? '').toString().trim();
+            String cat = (item['category'] ?? '').toString().trim();
+            if (cat.isEmpty || unit.isEmpty) {
               final match = _products.firstWhere(
                 (p) => (p['name'] as String? ?? '').toLowerCase() == pName.toLowerCase(),
                 orElse: () => <String, dynamic>{},
               );
-              cat = (match['category'] ?? match['jenis'] ?? 'Umum').toString();
+              if (cat.isEmpty) {
+                cat = (match['category'] ?? match['jenis'] ?? 'Umum').toString();
+              }
+              if (unit.isEmpty) {
+                unit = (match['unit'] ?? 'pcs').toString();
+              }
             }
             if (cat.isEmpty) cat = 'Umum';
-            final entry = catMap[cat] ?? {'category': cat, 'qty': 0, 'revenue': 0};
+            if (unit.isEmpty) unit = 'pcs';
+            final key = pName.toLowerCase();
+            final entry = productMap[key] ?? {
+              'name': pName,
+              'category': cat,
+              'unit': unit,
+              'qty': 0,
+              'revenue': 0,
+            };
             entry['qty'] = (entry['qty'] as int) + qty;
             entry['revenue'] = (entry['revenue'] as int) + (price * qty);
-            catMap[cat] = entry;
+            productMap[key] = entry;
           }
         }
       } else {
+        final String summary = (t['items'] ?? '').toString().trim();
         final int amount = (t['amount'] as num?)?.toInt() ?? 0;
-        if (amount > 0) {
-          final entry = catMap['Penjualan Umum'] ?? {'category': 'Penjualan Umum', 'qty': 1, 'revenue': 0};
+        if (summary.isNotEmpty && amount > 0) {
+          final key = summary.toLowerCase();
+          final entry = productMap[key] ?? {
+            'name': summary,
+            'category': 'Penjualan Umum',
+            'unit': 'item',
+            'qty': 0,
+            'revenue': 0,
+          };
           entry['qty'] = (entry['qty'] as int) + 1;
           entry['revenue'] = (entry['revenue'] as int) + amount;
-          catMap['Penjualan Umum'] = entry;
+          productMap[key] = entry;
         }
       }
     }
-    final list = catMap.values.toList()
-      ..sort((a, b) => (b['revenue'] as int).compareTo(a['revenue'] as int));
+
+    if (productMap.isEmpty && _stats['top_products'] is List) {
+      for (final raw in (_stats['top_products'] as List)) {
+        if (raw is Map) {
+          final String pName = (raw['name'] ?? '').toString().trim();
+          final int qty = (raw['total_sold'] as num?)?.toInt() ?? (raw['qty'] as num?)?.toInt() ?? 0;
+          final int rev = (raw['total_revenue'] as num?)?.toInt() ?? (raw['revenue'] as num?)?.toInt() ?? 0;
+          if (pName.isEmpty || qty <= 0) continue;
+          String cat = (raw['category'] ?? '').toString().trim();
+          String unit = (raw['unit'] ?? 'pcs').toString().trim();
+          if (cat.isEmpty) {
+            final match = _products.firstWhere(
+              (p) => (p['name'] as String? ?? '').toLowerCase() == pName.toLowerCase(),
+              orElse: () => <String, dynamic>{},
+            );
+            cat = (match['category'] ?? match['jenis'] ?? 'Umum').toString();
+          }
+          productMap[pName.toLowerCase()] = {
+            'name': pName,
+            'category': cat.isNotEmpty ? cat : 'Umum',
+            'unit': unit.isNotEmpty ? unit : 'pcs',
+            'qty': qty,
+            'revenue': rev,
+          };
+        }
+      }
+    }
+
+    final list = productMap.values.toList()
+      ..sort((a, b) {
+        final int cmpQty = (b['qty'] as int).compareTo(a['qty'] as int);
+        if (cmpQty != 0) return cmpQty;
+        return (b['revenue'] as int).compareTo(a['revenue'] as int);
+      });
     return list;
   }
 
@@ -259,34 +315,9 @@ class _DashboardPageState extends State<DashboardPage> {
                 child: const Icon(Icons.person_rounded, color: Color(0xFF1E874B), size: 28),
               ),
               const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Selamat Datang!',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade200,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          'Level 12',
-                          style: TextStyle(fontSize: 12, color: Colors.grey.shade700, fontWeight: FontWeight.w500),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      const Icon(Icons.monetization_on, color: Colors.amber, size: 16),
-                      const SizedBox(width: 4),
-                      const Text('2,564', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                    ],
-                  ),
-                ],
+              const Text(
+                'Selamat Datang!',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
             ],
           ),
@@ -485,9 +516,25 @@ class _DashboardPageState extends State<DashboardPage> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    const Align(
+                    Align(
                       alignment: Alignment.bottomRight,
-                      child: Icon(Icons.monetization_on_outlined, color: Colors.orange, size: 48),
+                      child: Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.orange, width: 3),
+                        ),
+                        alignment: Alignment.center,
+                        child: const Text(
+                          'Rp',
+                          style: TextStyle(
+                            color: Colors.orange,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
                     )
                   ],
                 ),
@@ -500,21 +547,23 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Widget _buildTopSellingSection() {
-    final categories = _topCategories;
+    final topSellers = _topSellers;
     return Column(
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text('Top-selling categories', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Text('Top Seller (Produk Terlaris)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             GestureDetector(
-              onTap: () => NavigationService.navigateTo(1),
+              key: const ValueKey('top_seller_view_all'),
+              behavior: HitTestBehavior.opaque,
+              onTap: () => setState(() => _showAnalytics = true),
               child: const Text('View all', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold, fontSize: 13)),
             ),
           ],
         ),
         const SizedBox(height: 16),
-        if (categories.isEmpty)
+        if (topSellers.isEmpty)
           const Center(
             child: Padding(
               padding: EdgeInsets.all(16.0),
@@ -523,47 +572,91 @@ class _DashboardPageState extends State<DashboardPage> {
           )
         else
           Column(
-            children: categories.take(4).map((cat) {
+            children: topSellers.take(4).toList().asMap().entries.map((entry) {
+              final int rank = entry.key + 1;
+              final Map<String, dynamic> prod = entry.value;
               return Container(
                 margin: const EdgeInsets.only(bottom: 10),
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 decoration: BoxDecoration(
                   color: const Color(0xFFF8FAFC),
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  border: Border.all(
+                    color: rank == 1 ? const Color(0xFF1E874B).withValues(alpha: 0.4) : const Color(0xFFE2E8F0),
+                  ),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 36,
-                          height: 36,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFFE8F5E9),
-                            shape: BoxShape.circle,
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 36,
+                            height: 36,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: rank == 1 ? const Color(0xFF1E874B) : const Color(0xFFE8F5E9),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Text(
+                              '#$rank',
+                              style: TextStyle(
+                                color: rank == 1 ? Colors.white : const Color(0xFF1E874B),
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            ),
                           ),
-                          child: const Icon(Icons.category_outlined, color: Color(0xFF1E874B), size: 18),
-                        ),
-                        const SizedBox(width: 10),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              cat['category'].toString(),
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        prod['name'].toString(),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                      ),
+                                    ),
+                                    if (rank == 1) ...[
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFFFF8E1),
+                                          borderRadius: BorderRadius.circular(6),
+                                          border: Border.all(color: const Color(0xFFFFCA28)),
+                                        ),
+                                        child: const Text(
+                                          'Top Seller',
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.bold,
+                                            color: Color(0xFFF57F17),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                                Text(
+                                  '${prod['category']} • ${prod['qty']} ${prod['unit']} terjual',
+                                  style: const TextStyle(color: Colors.grey, fontSize: 12),
+                                ),
+                              ],
                             ),
-                            Text(
-                              '${cat['qty']} item terjual',
-                              style: const TextStyle(color: Colors.grey, fontSize: 12),
-                            ),
-                          ],
-                        ),
-                      ],
+                          ),
+                        ],
+                      ),
                     ),
+                    const SizedBox(width: 8),
                     Text(
-                      _formatRp(cat['revenue'] as int),
+                      _formatRp(prod['revenue'] as int),
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 14,

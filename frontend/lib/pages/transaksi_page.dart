@@ -89,11 +89,15 @@ class _TransaksiPageState extends State<TransaksiPage> {
 
   void _showTransactionDetail(Map<String, dynamic> trx) {
     final String trxId = trx['id']?.toString() ?? '-';
-    final int amount = (trx['amount'] as int?) ?? 0;
-    final String method = trx['method']?.toString() ?? 'Tunai';
+    final int amount = (trx['amount'] as num?)?.toInt() ??
+        (trx['total_amount'] as num?)?.toInt() ??
+        0;
+    final String method = (trx['method'] ?? trx['payment_method'] ?? 'Tunai').toString();
     final String time = trx['time']?.toString() ?? '-';
     final bool isSynced = trx['synced'] == true;
-    final List cartItems = trx['cartItems'] as List? ?? [];
+    final List rawCartItems = trx['cartItems'] is List
+        ? trx['cartItems'] as List
+        : (trx['items'] is List ? trx['items'] as List : const []);
 
     showDialog(
       context: context,
@@ -103,7 +107,13 @@ class _TransaksiPageState extends State<TransaksiPage> {
           children: [
             const Icon(Icons.receipt_long, color: kGreen),
             const SizedBox(width: 8),
-            Text('Detail $trxId', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            Expanded(
+              child: Text(
+                'Detail $trxId',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ],
         ),
         content: SingleChildScrollView(
@@ -137,18 +147,57 @@ class _TransaksiPageState extends State<TransaksiPage> {
               const Divider(height: 20),
               const Text('Rincian Produk:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
               const SizedBox(height: 8),
-              if (cartItems.isNotEmpty)
-                ...cartItems.map((ci) {
-                  final String name = ci['name']?.toString() ?? '-';
-                  final int price = (ci['price'] as int?) ?? 0;
-                  final int qty = (ci['qty'] as int?) ?? 1;
+              if (rawCartItems.isNotEmpty)
+                ...rawCartItems.map((ci) {
+                  final Map itemMap = ci is Map ? ci : const {};
+                  final Map productMap = itemMap['product'] is Map ? itemMap['product'] as Map : const {};
+                  final String name = (itemMap['name'] ??
+                          itemMap['item_name'] ??
+                          productMap['name'] ??
+                          '-')
+                      .toString();
+                  final int price = (itemMap['price'] as num?)?.toInt() ??
+                      (itemMap['unit_price'] as num?)?.toInt() ??
+                      (productMap['selling_price'] as num?)?.toInt() ??
+                      0;
+                  final int qty = (itemMap['qty'] as num?)?.toInt() ??
+                      (itemMap['quantity'] as num?)?.toInt() ??
+                      1;
+                  final String unit =
+                      (itemMap['unit'] ?? productMap['unit'] ?? '').toString().trim();
+                  final int lineSubtotal =
+                      (itemMap['subtotal'] as num?)?.toInt() ?? (price * qty);
+                  final String qtyLabel = unit.isNotEmpty ? '$qty $unit' : '$qty x';
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 4),
                     child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Expanded(child: Text('$name ($qty x)', style: const TextStyle(fontSize: 13))),
-                        Text(_formatRp(price * qty), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                name,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF111827),
+                                ),
+                              ),
+                              Text(
+                                price > 0 ? '$qtyLabel × ${_formatRp(price)}' : qtyLabel,
+                                style: const TextStyle(fontSize: 11.5, color: Colors.grey),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          _formatRp(lineSubtotal),
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                        ),
                       ],
                     ),
                   );
@@ -290,11 +339,22 @@ class _TransaksiPageState extends State<TransaksiPage> {
                   actions: [
                     TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
                     ElevatedButton(
-                      onPressed: () {
+                      onPressed: () async {
                         Navigator.pop(ctx);
-                        // Hanya kosongkan riwayat transaksi; produk tetap ada.
-                        ApiService.resetTransactions();
-                        _loadTransactions();
+                        // Kosongkan riwayat transaksi (lokal & backend); produk tetap ada.
+                        await ApiService.resetTransactions();
+                        if (!mounted) return;
+                        _searchCtrl.clear();
+                        _searchQuery = '';
+                        await _loadTransactions();
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Riwayat transaksi berhasil direset'),
+                            backgroundColor: kGreen,
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
                       },
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
                       child: const Text('Reset'),

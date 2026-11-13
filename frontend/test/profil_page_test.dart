@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:majunih/pages/profil_page.dart';
 import 'package:majunih/services/api_service.dart';
@@ -83,7 +84,76 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Cadangkan Data Transaksi'), findsOneWidget);
+    expect(find.text('Semua'), findsOneWidget);
+    expect(find.text('Perminggu'), findsOneWidget);
+    expect(find.text('Bulan'), findsOneWidget);
+    expect(find.text('Tahun'), findsOneWidget);
+    expect(find.textContaining('sep=,'), findsOneWidget);
     expect(find.textContaining('id_transaksi,waktu_transaksi,jenis_pembayaran'), findsOneWidget);
     expect(find.textContaining('3000,6000'), findsOneWidget);
+
+    // Mock Android file_export channel in case test runs on Android/desktop
+    String? savedFileName;
+    const channel = MethodChannel('com.example.majunih/file_export');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'saveCsvToDownloads') {
+        final args = call.arguments as Map;
+        savedFileName = args['fileName']?.toString();
+        return 'Download/${args['fileName']}';
+      }
+      return null;
+    });
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+
+    // Switch export period to Perminggu and verify Simpan CSV uses period in filename
+    await tester.tap(find.text('Perminggu'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('(Perminggu) siap diekspor'), findsOneWidget);
+
+    // Tap Simpan CSV and verify confirmation SnackBar appears
+    expect(find.text('Simpan CSV'), findsOneWidget);
+    await tester.tap(find.text('Simpan CSV'));
+    await tester.pumpAndSettle();
+
+    expect(savedFileName, startsWith('manjuni_transaksi_minggu_'));
+    expect(find.textContaining('Backup CSV tersimpan di:'), findsOneWidget);
+  });
+
+  test('filterTransactionsByPeriod filters weekly, monthly, yearly, and all', () {
+    final ref = DateTime(2026, 11, 20, 12, 0);
+    final list = <Map<String, dynamic>>[
+      {'id': 'TRX-WEEK', 'date': '2026-11-18'},
+      {'id': 'TRX-MONTH', 'date': '2026-11-02'},
+      {'id': 'TRX-YEAR', 'date': '2026-08-10'},
+      {'id': 'TRX-OLD', 'date': '2025-12-30'},
+    ];
+
+    expect(
+      ApiService.filterTransactionsByPeriod(list, 'minggu', referenceDate: ref)
+          .map((e) => e['id'])
+          .toList(),
+      ['TRX-WEEK'],
+    );
+    expect(
+      ApiService.filterTransactionsByPeriod(list, 'bulan', referenceDate: ref)
+          .map((e) => e['id'])
+          .toList(),
+      ['TRX-WEEK', 'TRX-MONTH'],
+    );
+    expect(
+      ApiService.filterTransactionsByPeriod(list, 'tahun', referenceDate: ref)
+          .map((e) => e['id'])
+          .toList(),
+      ['TRX-WEEK', 'TRX-MONTH', 'TRX-YEAR'],
+    );
+    expect(
+      ApiService.filterTransactionsByPeriod(list, 'semua', referenceDate: ref)
+          .length,
+      4,
+    );
   });
 }

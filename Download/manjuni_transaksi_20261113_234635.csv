@@ -1,0 +1,9 @@
+sep=,
+id_transaksi,waktu_transaksi,jenis_pembayaran,nama_produk,qty,harga_satuan_idr,total_transaksi_idr
+"TRX-011","2026-11-13 23:46","Tunai","Roti Bakar Coklat Keju",1,14000,46500
+"TRX-011","2026-11-13 23:46","Tunai","Kopi Arabika Tubruk",1,15000,46500
+"TRX-011","2026-11-13 23:46","Tunai","Minyak Goreng Sania 1L",1,17500,46500
+"TRX-010","2026-11-13 23:45","Tunai","Kopi Arabika Tubruk",1,15000,15000
+"TRX-09","2026-11-13 23:25","QRIS","Kopi Arabika Tubruk",1,15000,29000
+"TRX-09","2026-11-13 23:25","QRIS","Roti Bakar Coklat Keju",1,14000,29000
+"TRX-08","2026-11-13 23:24","Kasbon","Kopi Arabika Tubruk",1,15000,15000

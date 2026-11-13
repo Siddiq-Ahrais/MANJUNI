@@ -107,4 +107,19 @@ void main() {
     expect(find.text('This month'), findsOneWidget);
     expect(find.text('1'), findsOneWidget);
   });
+
+  testWidgets('View all pada Top Seller mengarahkan ke sub-tab Analytics',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(home: Scaffold(body: DashboardPage())),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Top Seller (Produk Terlaris)'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('top_seller_view_all')));
+    await tester.pumpAndSettle(const Duration(seconds: 6));
+
+    expect(find.text('Penjualan vs Pembelian'), findsOneWidget);
+    expect(find.text('Produk Terlaris'), findsOneWidget);
+  });
 }
