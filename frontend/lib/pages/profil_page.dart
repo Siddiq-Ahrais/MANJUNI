@@ -129,7 +129,7 @@ class _ProfilPageState extends State<ProfilPage> {
                   final ts = DateTime.now().millisecondsSinceEpoch;
                   final file = File('${Directory.systemTemp.path}/manjuni_transaksi_$ts.csv');
                   await file.writeAsString(csvData);
-                  if (!ctx.mounted) return;
+                  if (!ctx.mounted || !mounted) return;
                   Navigator.pop(ctx);
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(

@@ -262,11 +262,11 @@ class _ProdukPageState extends State<ProdukPage> {
                       }
                     } catch (_) {}
                   }
-                  Navigator.pop(dCtx);
+                  if (dCtx.mounted) Navigator.pop(dCtx);
                   onPicked(raw, raw.split(RegExp(r'[\\/]')).last);
                 } else {
                   final first = _imagePresets.first;
-                  Navigator.pop(dCtx);
+                  if (dCtx.mounted) Navigator.pop(dCtx);
                   onPicked('data:image/png;base64,${first['base64']}', first['label']!);
                 }
               },

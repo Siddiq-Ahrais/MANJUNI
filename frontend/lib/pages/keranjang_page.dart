@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../services/cart_service.dart';
 import '../services/navigation_service.dart';
+import '../widgets/qris_payment_dialog.dart';
 
 class KeranjangPage extends StatefulWidget {
   const KeranjangPage({super.key});
@@ -71,6 +72,34 @@ class _KeranjangPageState extends State<KeranjangPage> {
     );
   }
 
+  Future<bool> _validateStock(List<CartItem> cartItems) async {
+    final latestProducts = await ApiService.getProducts();
+    for (final item in cartItems) {
+      final match = latestProducts.firstWhere(
+        (p) => (p['name'] as String? ?? '').toLowerCase() == item.name.toLowerCase(),
+        orElse: () => <String, dynamic>{},
+      );
+      if (match.isNotEmpty) {
+        final availableStock = (match['stock'] as int?) ?? 0;
+        if (item.qty > availableStock) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Stok ${item.name} tidak mencukupi (tersisa $availableStock, di keranjang ${item.qty}).',
+                ),
+                backgroundColor: Colors.redAccent,
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
   Future<void> _handleCheckout() async {
     final cartItems = CartService.cartNotifier.value;
     if (cartItems.isEmpty) {
@@ -87,31 +116,20 @@ class _KeranjangPageState extends State<KeranjangPage> {
     setState(() => _isProcessing = true);
 
     // Validasi stok terbaru sebelum checkout
-    final latestProducts = await ApiService.getProducts();
-    for (final item in cartItems) {
-      final match = latestProducts.firstWhere(
-        (p) => (p['name'] as String? ?? '').toLowerCase() == item.name.toLowerCase(),
-        orElse: () => <String, dynamic>{},
-      );
-      if (match.isNotEmpty) {
-        final availableStock = (match['stock'] as int?) ?? 0;
-        if (item.qty > availableStock) {
-          if (!mounted) return;
-          setState(() => _isProcessing = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Stok ${item.name} tidak mencukupi (tersisa $availableStock, di keranjang ${item.qty}).',
-              ),
-              backgroundColor: Colors.redAccent,
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-          return;
-        }
-      }
+    final isStockValid = await _validateStock(cartItems);
+    if (!isStockValid) {
+      if (mounted) setState(() => _isProcessing = false);
+      return;
     }
 
+    // Jika metode pembayaran QRIS (index 1), buka alur QRIS & Barcode (Generate / Scan)
+    if (_selectedPayment == 1) {
+      setState(() => _isProcessing = false);
+      await _openQrisPaymentFlow();
+      return;
+    }
+
+    // Alur Tunai / Kasbon
     final summary = cartItems.map((i) => '${i.name} (${i.qty} ${i.unit})').join(', ');
     final method = _paymentMethods[_selectedPayment];
     final total = CartService.subtotal;
@@ -140,58 +158,97 @@ class _KeranjangPageState extends State<KeranjangPage> {
       return;
     }
 
-    if (success) {
-      final isOnline = ApiService.isConnectedNotifier.value == true;
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: const BoxDecoration(
-                  color: Color(0xFFE8F5E9),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.check_circle_rounded, color: kGreen, size: 48),
+    _showPaymentSuccessDialog(total: total, method: method);
+  }
+
+  /// Buka alur QRIS & Barcode (2 Metode: Generate QR/Barcode & Scan Barcode Pelanggan)
+  Future<void> _openQrisPaymentFlow() async {
+    final cartItems = CartService.cartNotifier.value;
+    if (cartItems.isEmpty) return;
+
+    final isStockValid = await _validateStock(cartItems);
+    if (!isStockValid || !mounted) return;
+
+    final summary = cartItems.map((i) => '${i.name} (${i.qty} ${i.unit})').join(', ');
+    final total = CartService.subtotal;
+
+    final result = await QrisPaymentDialog.show(
+      context,
+      totalAmount: total,
+      customerName: _customerName,
+      itemsSummary: summary,
+      onConfirmPayment: ({
+        required String barcodeOrQr,
+        required String methodDetail,
+      }) async {
+        return await ApiService.createTransaction(
+          cartItems: cartItems,
+          itemsSummary: '$summary ($methodDetail)',
+          paymentMethod: 'QRIS',
+          totalAmount: total,
+        );
+      },
+    );
+
+    if (result == true && mounted) {
+      _showPaymentSuccessDialog(
+        total: total,
+        method: 'QRIS & Barcode Terverifikasi',
+      );
+    }
+  }
+
+  void _showPaymentSuccessDialog({required int total, required String method}) {
+    final isOnline = ApiService.isConnectedNotifier.value == true;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: const BoxDecoration(
+                color: Color(0xFFE8F5E9),
+                shape: BoxShape.circle,
               ),
-              const SizedBox(height: 16),
-              const Text('Pembayaran Berhasil!',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              Text(
-                'Total: ${_formatRp(total)} ($method)',
-                style: const TextStyle(fontWeight: FontWeight.bold, color: kGreen),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                isOnline
-                    ? 'Transaksi berhasil dicatat ke server!'
-                    : 'Transaksi tersimpan di perangkat dan disinkronkan saat online.',
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-            ],
-          ),
-          actions: [
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(ctx);
-                CartService.clear();
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: kGreen,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-              child: const Text('Selesai'),
+              child: const Icon(Icons.check_circle_rounded, color: kGreen, size: 48),
+            ),
+            const SizedBox(height: 16),
+            const Text('Pembayaran Berhasil!',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Text(
+              'Total: ${_formatRp(total)} ($method)',
+              style: const TextStyle(fontWeight: FontWeight.bold, color: kGreen),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              isOnline
+                  ? 'Transaksi berhasil dicatat ke server!'
+                  : 'Transaksi tersimpan di perangkat dan disinkronkan saat online.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
             ),
           ],
         ),
-      );
-    }
+        actions: [
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              CartService.clear();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: kGreen,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text('Selesai'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -230,16 +287,46 @@ class _KeranjangPageState extends State<KeranjangPage> {
                   const SizedBox(height: 16),
 
                   // Metode Pembayaran Header & Selector
-                  const Text(
-                    'Metode Pembayaran',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
-                      color: Color(0xFF111827),
-                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Metode Pembayaran',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                          color: Color(0xFF111827),
+                        ),
+                      ),
+                      if (_selectedPayment == 1 && cartItems.isNotEmpty)
+                        GestureDetector(
+                          onTap: _openQrisPaymentFlow,
+                          child: const Row(
+                            children: [
+                              Icon(Icons.qr_code_scanner_rounded, size: 16, color: kGreen),
+                              SizedBox(width: 4),
+                              Text(
+                                'Buka Scanner',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: kGreen,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
                   ),
                   const SizedBox(height: 10),
                   _buildPaymentMethodsSelector(),
+                  
+                  // Quick QRIS Barcode Banner if QRIS selected
+                  if (_selectedPayment == 1) ...[
+                    const SizedBox(height: 12),
+                    _buildQrisQuickBanner(cartItems.isNotEmpty),
+                  ],
+
                   const SizedBox(height: 20),
 
                   // Ringkasan Pembayaran Card
@@ -631,13 +718,26 @@ class _KeranjangPageState extends State<KeranjangPage> {
                 ),
               ),
               child: Center(
-                child: Text(
-                  e.value,
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: isSelected ? kGreen : const Color(0xFF374151),
-                    fontSize: 13,
-                  ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (e.key == 1) ...[
+                      Icon(
+                        Icons.qr_code_2_rounded,
+                        size: 16,
+                        color: isSelected ? kGreen : const Color(0xFF374151),
+                      ),
+                      const SizedBox(width: 4),
+                    ],
+                    Text(
+                      e.value,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: isSelected ? kGreen : const Color(0xFF374151),
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -647,7 +747,68 @@ class _KeranjangPageState extends State<KeranjangPage> {
     );
   }
 
+  Widget _buildQrisQuickBanner(bool hasItems) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0FDF4),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFBBF7D0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.bolt_rounded, size: 18, color: kGreen),
+              SizedBox(width: 6),
+              Text(
+                'Dua Metode Pembayaran QRIS Tersedia:',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF166534),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            '\u2022 1. Generate: Toko menampilkan QRIS dinamis & Barcode\n\u2022 2. Scan: Kasir memindai barcode / e-wallet pelanggan',
+            style: TextStyle(
+              fontSize: 11.5,
+              color: Color(0xFF15803D),
+              height: 1.4,
+            ),
+          ),
+          if (hasItems) ...[
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              height: 34,
+              child: OutlinedButton.icon(
+                onPressed: _openQrisPaymentFlow,
+                icon: const Icon(Icons.qr_code_scanner_rounded, size: 16),
+                label: const Text('Buka Layar QRIS & Scanner'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: kGreen,
+                  side: const BorderSide(color: kGreen),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _buildSummaryCard(int totalCount, int subtotal, bool hasItems) {
+    final isQris = _selectedPayment == 1;
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -746,19 +907,25 @@ class _KeranjangPageState extends State<KeranjangPage> {
                       ),
                     )
                   : Icon(
-                      hasItems ? Icons.check : Icons.shopping_cart_outlined,
+                      isQris
+                          ? Icons.qr_code_scanner_rounded
+                          : hasItems
+                              ? Icons.check
+                              : Icons.shopping_cart_outlined,
                       color: hasItems ? Colors.white : Colors.grey.shade600,
                       size: 20,
                     ),
               label: Text(
                 _isProcessing
                     ? 'Memproses...'
-                    : hasItems
-                        ? 'Bayar  ${_formatRp(subtotal)}'
-                        : 'Keranjang Kosong (Rp0)',
+                    : !hasItems
+                        ? 'Keranjang Kosong (Rp0)'
+                        : isQris
+                            ? 'Bayar QRIS / Barcode ${_formatRp(subtotal)}'
+                            : 'Bayar  ${_formatRp(subtotal)}',
                 style: TextStyle(
                   color: hasItems ? Colors.white : Colors.grey.shade700,
-                  fontSize: 15,
+                  fontSize: 14.5,
                   fontWeight: FontWeight.bold,
                 ),
               ),
