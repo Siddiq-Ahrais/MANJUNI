@@ -3,6 +3,7 @@ import 'dart:io' show Directory, File;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_config.dart';
 import '../services/api_service.dart';
 import '../services/cart_service.dart';
@@ -21,13 +22,45 @@ class _ProfilPageState extends State<ProfilPage> {
   int _productCount = 0;
   int _transactionCount = 0;
   String _lastSyncText = 'Belum ada sinkronisasi';
+  String _storeName = 'Nama Toko Anda';
+  String _storeCategory = 'Kategori Toko \u2022 UMKM';
+
+  String get _storeInitials {
+    if (_storeName == 'Nama Toko Anda' || _storeName == 'Warung Maju Jaya') {
+      return 'MJ';
+    }
+    final words = _storeName.trim().split(RegExp(r'\s+'));
+    if (words.isEmpty || words[0].isEmpty) return 'MJ';
+    if (words.length == 1) {
+      return words[0].substring(0, words[0].length >= 2 ? 2 : 1).toUpperCase();
+    }
+    return (words[0][0] + words[1][0]).toUpperCase();
+  }
 
   @override
   void initState() {
     super.initState();
+    _loadStoreInfo();
     _checkStatus(silent: true);
     _loadStats();
     ApiService.dataChangedNotifier.addListener(_onDataChanged);
+  }
+
+  Future<void> _loadStoreInfo() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final name = prefs.getString('store_name');
+      final cat = prefs.getString('store_category');
+      if (!mounted) return;
+      setState(() {
+        if (name != null && name.trim().isNotEmpty) {
+          _storeName = name.trim();
+        }
+        if (cat != null && cat.trim().isNotEmpty) {
+          _storeCategory = cat.trim();
+        }
+      });
+    } catch (_) {}
   }
 
   @override
@@ -37,7 +70,10 @@ class _ProfilPageState extends State<ProfilPage> {
   }
 
   void _onDataChanged() {
-    if (mounted) _loadStats();
+    if (mounted) {
+      _loadStoreInfo();
+      _loadStats();
+    }
   }
 
   Future<void> _loadStats() async {
@@ -188,6 +224,188 @@ class _ProfilPageState extends State<ProfilPage> {
         ),
       );
     }
+  }
+
+  void _showEditStoreDialog() {
+    final nameCtrl = TextEditingController(text: _storeName);
+    final categoryCtrl = TextEditingController(text: _storeCategory);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 20,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE5E7EB),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE8F5E9),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.storefront_rounded, color: kGreen, size: 24),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Ubah Identitas Toko',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                          ),
+                          Text(
+                            'Sesuaikan nama toko dan kategori usaha Anda',
+                            style: TextStyle(fontSize: 12, color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const Divider(height: 24),
+                const Text(
+                  'Nama Toko',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: nameCtrl,
+                  decoration: InputDecoration(
+                    hintText: 'Contoh: Warung Maju Jaya',
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                const Text(
+                  'Kategori Toko / Usaha',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: categoryCtrl,
+                  decoration: InputDecoration(
+                    hintText: 'Misal: Kategori Toko \u2022 UMKM',
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                InkWell(
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _showServerDialog();
+                  },
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      children: [
+                        Icon(Icons.settings_ethernet_rounded, size: 16, color: kGreen),
+                        SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Pengaturan Target Server Localhost / IP >',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: kGreen,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        child: const Text('Batal'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          final newName = nameCtrl.text.trim();
+                          final newCat = categoryCtrl.text.trim();
+                          if (newName.isNotEmpty) {
+                            setState(() {
+                              _storeName = newName;
+                              if (newCat.isNotEmpty) {
+                                _storeCategory = newCat;
+                              }
+                            });
+                            final prefs = await SharedPreferences.getInstance();
+                            await prefs.setString('store_name', newName);
+                            if (newCat.isNotEmpty) {
+                              await prefs.setString('store_category', newCat);
+                            }
+                            ApiService.dataChangedNotifier.value++;
+                          }
+                          if (ctx.mounted) Navigator.pop(ctx);
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Nama toko berhasil diperbarui: $_storeName'),
+                                backgroundColor: kGreen,
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: kGreen,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        child: const Text('Simpan'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   void _showServerDialog() {
@@ -443,74 +661,78 @@ class _ProfilPageState extends State<ProfilPage> {
               _buildHeader(),
               const SizedBox(height: 20),
               // Header Profile Card (Mint Green, matching Image 3)
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFFA5D6A7),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 58,
-                    height: 58,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF1E874B),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Center(
-                      child: Text(
-                        'MJ',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 22,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Nama Toko Anda',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 17,
-                            color: Color(0xFF111827),
-                          ),
-                        ),
-                        SizedBox(height: 2),
-                        Text(
-                          'Kategori Toko \u2022 UMKM',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Color(0xFF374151),
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  GestureDetector(
-                    onTap: _showServerDialog,
-                    child: Container(
-                      width: 40,
-                      height: 40,
+            GestureDetector(
+              onTap: _showEditStoreDialog,
+              behavior: HitTestBehavior.opaque,
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFA5D6A7),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 58,
+                      height: 58,
                       decoration: const BoxDecoration(
-                        color: Colors.white,
+                        color: Color(0xFF1E874B),
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(
-                        Icons.edit_outlined,
-                        size: 20,
-                        color: Color(0xFF374151),
+                      child: Center(
+                        child: Text(
+                          _storeInitials,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 22,
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _storeName,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 17,
+                              color: Color(0xFF111827),
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            _storeCategory,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Color(0xFF374151),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: _showEditStoreDialog,
+                      child: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: const BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.edit_outlined,
+                          size: 20,
+                          color: Color(0xFF374151),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 12),
@@ -837,10 +1059,10 @@ class _ProfilPageState extends State<ProfilPage> {
               ),
             ),
             const SizedBox(width: 12),
-            const Column(
+            Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                const Text(
                   'Profil',
                   style: TextStyle(
                     fontSize: 18,
@@ -848,10 +1070,10 @@ class _ProfilPageState extends State<ProfilPage> {
                     color: Color(0xFF111827),
                   ),
                 ),
-                SizedBox(height: 2),
+                const SizedBox(height: 2),
                 Text(
-                  'Warung Maju Jaya',
-                  style: TextStyle(
+                  _storeName,
+                  style: const TextStyle(
                     fontSize: 12,
                     color: Colors.grey,
                     fontWeight: FontWeight.w500,

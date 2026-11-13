@@ -241,56 +241,72 @@ class _DashboardPageState extends State<DashboardPage> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Row(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: const BoxDecoration(
-                color: Color(0xFFE8F5E9),
-                shape: BoxShape.circle,
+        GestureDetector(
+          onTap: () {
+            NavigationService.navigateTo(4); // Navigasi ke Pengaturan Profil (P4)
+          },
+          behavior: HitTestBehavior.opaque,
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFE8F5E9),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.person_rounded, color: Color(0xFF1E874B), size: 28),
               ),
-              child: const Icon(Icons.person_rounded, color: Color(0xFF1E874B), size: 28),
-            ),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Hello, Alex!',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade200,
-                        borderRadius: BorderRadius.circular(12),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Selamat Datang!',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade200,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          'Level 12',
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade700, fontWeight: FontWeight.w500),
+                        ),
                       ),
-                      child: Text(
-                        'Level 12',
-                        style: TextStyle(fontSize: 12, color: Colors.grey.shade700, fontWeight: FontWeight.w500),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    const Icon(Icons.monetization_on, color: Colors.amber, size: 16),
-                    const SizedBox(width: 4),
-                    const Text('2,564', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                  ],
-                ),
-              ],
-            ),
-          ],
-        ),
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.grey.shade300),
+                      const SizedBox(width: 8),
+                      const Icon(Icons.monetization_on, color: Colors.amber, size: 16),
+                      const SizedBox(width: 4),
+                      const Text('2,564', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ],
+              ),
+            ],
           ),
-          child: const Icon(Icons.menu, size: 20),
+        ),
+        GestureDetector(
+          onTap: () {
+            if (Scaffold.maybeOf(context)?.hasDrawer ?? false) {
+              Scaffold.of(context).openDrawer();
+            } else {
+              NavigationService.openDrawer();
+            }
+          },
+          behavior: HitTestBehavior.opaque,
+          child: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.grey.shade300),
+            ),
+            child: const Icon(Icons.menu, size: 20),
+          ),
         ),
       ],
     );
