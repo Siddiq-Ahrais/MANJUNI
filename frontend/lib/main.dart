@@ -95,7 +95,7 @@ class _DashboardPageState extends State<DashboardPage> {
     if (!mounted) return;
     setState(() {
       _stats = data;
-      _lowStockList = products.where((p) => p['low'] == true || (p['stock'] as int? ?? 0) <= 5).map((p) {
+      _lowStockList = products.where((p) => ApiService.isLowStock(p)).map((p) {
         return {
           'name': p['name'],
           'remaining': p['stock'],

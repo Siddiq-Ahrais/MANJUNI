@@ -59,4 +59,52 @@ void main() {
     expect(find.byIcon(Icons.person_outline), findsOneWidget);
     expect(find.byIcon(Icons.shopping_cart_outlined), findsOneWidget);
   });
+
+  testWidgets('P1: Overview Total orders & Total revenue bertambah saat transaksi dibuat dan opsi This week aktif',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(home: Scaffold(body: DashboardPage())),
+    );
+    await tester.pumpAndSettle();
+
+    // Awal: 0 orders & Rp0
+    expect(find.text('0'), findsOneWidget);
+    expect(find.text('Rp0'), findsOneWidget);
+    expect(find.text('This week'), findsOneWidget);
+
+    // Tambah produk & transaksi baru
+    await ApiService.addProduct(
+      name: 'Beras 5kg',
+      price: 65000,
+      costPrice: 55000,
+      stock: 20,
+      unit: 'kg',
+      category: 'Sembako',
+    );
+    await ApiService.createTransaction(
+      cartItems: [
+        {'name': 'Beras 5kg', 'qty': 2, 'price': 65000, 'unit': 'kg', 'category': 'Sembako'},
+      ],
+      itemsSummary: 'Beras 5kg (2 kg)',
+      paymentMethod: 'Tunai',
+      totalAmount: 130000,
+    );
+    await tester.pumpAndSettle();
+
+    // Total orders menjadi 1 dan Total revenue menjadi Rp130.000
+    expect(find.text('1'), findsOneWidget);
+    expect(find.text('Rp130.000'), findsWidgets);
+
+    // Opsi 'This week' dapat diklik dan diganti ke 'This month' / 'Today'
+    await tester.tap(find.text('This week'));
+    await tester.pumpAndSettle();
+    expect(find.text('Today'), findsOneWidget);
+    expect(find.text('This month'), findsOneWidget);
+    expect(find.text('All time'), findsOneWidget);
+
+    await tester.tap(find.text('This month'));
+    await tester.pumpAndSettle();
+    expect(find.text('This month'), findsOneWidget);
+    expect(find.text('1'), findsOneWidget);
+  });
 }

@@ -4,16 +4,22 @@ class CartItem {
   final dynamic productId;
   final String name;
   final int price;
+  final int costPrice;
   final String unit;
   final int? maxStock;
+  final String? image;
+  final String? category;
   int qty;
 
   CartItem({
     this.productId,
     required this.name,
     required this.price,
+    this.costPrice = 0,
     required this.unit,
     this.maxStock,
+    this.image,
+    this.category,
     this.qty = 1,
   });
 
@@ -22,8 +28,11 @@ class CartItem {
       if (productId != null) 'product_id': productId,
       'name': name,
       'price': price,
+      'cost_price': costPrice,
       'unit': unit,
       if (maxStock != null) 'max_stock': maxStock,
+      if (image != null && image!.isNotEmpty) 'image': image,
+      if (category != null && category!.isNotEmpty) 'category': category,
       'qty': qty,
     };
   }
@@ -45,11 +54,15 @@ class CartService {
     String unit, {
     int? maxStock,
     dynamic productId,
+    int costPrice = 0,
+    String? image,
+    String? category,
   }) {
     if (maxStock != null && maxStock <= 0) {
       return false;
     }
 
+    final normalizedUnit = unit.trim().isNotEmpty ? unit.trim() : 'pcs';
     final list = List<CartItem>.from(cartNotifier.value);
     final idx = list.indexWhere((item) => item.name.toLowerCase() == name.toLowerCase());
     if (idx != -1) {
@@ -60,9 +73,12 @@ class CartService {
       list[idx] = CartItem(
         productId: productId ?? list[idx].productId,
         name: list[idx].name,
-        price: list[idx].price,
-        unit: list[idx].unit,
+        price: price > 0 ? price : list[idx].price,
+        costPrice: costPrice > 0 ? costPrice : list[idx].costPrice,
+        unit: normalizedUnit,
         maxStock: effectiveMax,
+        image: (image != null && image.isNotEmpty) ? image : list[idx].image,
+        category: (category != null && category.isNotEmpty) ? category : list[idx].category,
         qty: list[idx].qty + 1,
       );
     } else {
@@ -70,8 +86,11 @@ class CartService {
         productId: productId,
         name: name,
         price: price,
-        unit: unit,
+        costPrice: costPrice,
+        unit: normalizedUnit,
         maxStock: maxStock,
+        image: image,
+        category: category,
         qty: 1,
       ));
     }
@@ -99,8 +118,11 @@ class CartService {
         productId: current.productId,
         name: current.name,
         price: current.price,
+        costPrice: current.costPrice,
         unit: current.unit,
         maxStock: effectiveMax,
+        image: current.image,
+        category: current.category,
         qty: newQty,
       );
     }

@@ -197,4 +197,129 @@ void main() {
     final list = await ApiService.getProducts();
     expect(list.where((p) => p['name'] == 'Kopi Kapal Api'), isNotEmpty);
   });
+
+  test('P1: Stok menipis menggunakan persentase (< 50% dari stok awal)', () async {
+    SharedPreferences.setMockInitialValues({});
+    ApiService.resetAllData();
+
+    await ApiService.addProduct(
+      name: 'Beras Pandan Wangi',
+      price: 15000,
+      costPrice: 12000,
+      stock: 100,
+      unit: 'kg',
+      category: 'Sembako',
+    );
+
+    // Saat stok awal 100, produk belum menipis
+    var products = await ApiService.getProducts();
+    expect(ApiService.isLowStock(products.first), isFalse);
+
+    // Transaksi 50 kg -> sisa stok 50 (50% dari 100) -> belum di bawah 50%
+    await ApiService.createTransaction(
+      cartItems: [
+        {'name': 'Beras Pandan Wangi', 'qty': 50, 'price': 15000, 'unit': 'kg'},
+      ],
+      itemsSummary: 'Beras Pandan Wangi (50 kg)',
+      paymentMethod: 'Tunai',
+      totalAmount: 750000,
+    );
+    products = await ApiService.getProducts();
+    expect(products.first['stock'], 50);
+    expect(ApiService.isLowStock(products.first), isFalse);
+
+    // Transaksi 1 kg lagi -> sisa stok 49 (< 50% dari 100) -> terdeteksi stok menipis!
+    await ApiService.createTransaction(
+      cartItems: [
+        {'name': 'Beras Pandan Wangi', 'qty': 1, 'price': 15000, 'unit': 'kg'},
+      ],
+      itemsSummary: 'Beras Pandan Wangi (1 kg)',
+      paymentMethod: 'Tunai',
+      totalAmount: 15000,
+    );
+    products = await ApiService.getProducts();
+    expect(products.first['stock'], 49);
+    expect(ApiService.isLowStock(products.first), isTrue);
+  });
+
+  testWidgets(
+      'P1: Tambah produk mendukung upload gambar, satuan (kg/liter/gram), dan harga modal, serta link satuan ke keranjang',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: ProdukPage(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final tambahBtn = find.widgetWithText(ElevatedButton, 'Tambah Produk');
+    await tester.ensureVisible(tambahBtn);
+    await tester.pumpAndSettle();
+    await tester.tap(tambahBtn);
+    await tester.pumpAndSettle();
+
+    // Verifikasi opsi satuan kg, liter, gram tersedia
+    expect(find.widgetWithText(ChoiceChip, 'kg'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'liter'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'gram'), findsOneWidget);
+
+    // Upload gambar dari galeri cepat
+    await tester.tap(find.text('Upload Gambar'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Beras / Sembako'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Gambar Terpilih:'), findsOneWidget);
+
+    // Isi nama produk
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Misal: Beras Ramos, Kopi ABC, dll'),
+      'Beras Rojolele',
+    );
+
+    // Pilih satuan 'kg'
+    final kgChip = find.widgetWithText(ChoiceChip, 'kg');
+    await tester.ensureVisible(kgChip);
+    await tester.pumpAndSettle();
+    await tester.tap(kgChip);
+    await tester.pumpAndSettle();
+
+    // Isi Harga Modal & Harga Jual
+    final modalField = find.widgetWithText(TextField, '28000');
+    await tester.ensureVisible(modalField);
+    await tester.enterText(modalField, '11000');
+
+    final priceField = find.widgetWithText(TextField, '35000');
+    await tester.ensureVisible(priceField);
+    await tester.enterText(priceField, '14000');
+
+    final simpanBtn = find.text('Simpan Produk');
+    await tester.ensureVisible(simpanBtn);
+    await tester.pumpAndSettle();
+    await tester.tap(simpanBtn);
+    await tester.pumpAndSettle();
+
+    // Produk tampil dengan satuan kg & modal
+    expect(find.text('Beras Rojolele'), findsOneWidget);
+    expect(find.text('Modal: Rp11.000 / kg'), findsOneWidget);
+
+    // Tambah ke keranjang (set stok > 0 dulu atau cek produk ber-stok)
+    await ApiService.addProduct(
+      name: 'Gula Pasir',
+      price: 16000,
+      costPrice: 13500,
+      stock: 20,
+      unit: 'kg',
+      category: 'Sembako',
+    );
+    await tester.pumpAndSettle();
+
+    final addCartBtn = find.widgetWithText(OutlinedButton, 'Tambah').first;
+    await tester.tap(addCartBtn);
+    await tester.pump();
+
+    expect(CartService.cartNotifier.value.first.unit, 'kg');
+    expect(CartService.cartNotifier.value.first.costPrice, 13500);
+  });
 }

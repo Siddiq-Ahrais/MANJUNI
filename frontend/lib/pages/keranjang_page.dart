@@ -112,7 +112,7 @@ class _KeranjangPageState extends State<KeranjangPage> {
       }
     }
 
-    final summary = cartItems.map((i) => '${i.name} (${i.qty}x)').join(', ');
+    final summary = cartItems.map((i) => '${i.name} (${i.qty} ${i.unit})').join(', ');
     final method = _paymentMethods[_selectedPayment];
     final total = CartService.subtotal;
 
@@ -557,7 +557,7 @@ class _KeranjangPageState extends State<KeranjangPage> {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(
-                          'Jumlah ${item.name} mencapai batas stok (${item.maxStock ?? item.qty})!',
+                          'Jumlah ${item.name} mencapai batas stok (${item.maxStock ?? item.qty} ${item.unit})!',
                         ),
                         backgroundColor: Colors.redAccent,
                         behavior: SnackBarBehavior.floating,
@@ -577,6 +577,22 @@ class _KeranjangPageState extends State<KeranjangPage> {
                     Icons.add,
                     color: Colors.white,
                     size: 16,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF3F4F6),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  item.unit,
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF4B5563),
                   ),
                 ),
               ),

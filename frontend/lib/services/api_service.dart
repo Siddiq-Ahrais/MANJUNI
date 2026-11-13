@@ -26,6 +26,11 @@ class ApiService {
   static final List<Map<String, dynamic>> _fallbackTransactions = [];
   static final List<Map<String, dynamic>> _fallbackCustomers = [];
 
+  static List<Map<String, dynamic>> get localProducts =>
+      List<Map<String, dynamic>>.from(_fallbackProducts);
+  static List<Map<String, dynamic>> get localTransactions =>
+      List<Map<String, dynamic>>.from(_fallbackTransactions);
+
   // Kunci penyimpanan lokal (SharedPreferences) agar produk & data tetap ada
   // setelah aplikasi ditutup / user keluar lalu masuk kembali.
   /// Kunci produk di penyimpanan perangkat (exposed untuk keperluan test).
@@ -242,6 +247,22 @@ class ApiService {
     dataChangedNotifier.value++;
   }
 
+  /// Validasi apakah stok produk menipis berdasarkan persentase (< 50% dari stok awal).
+  /// Jika input stok awal misalnya 100, peringatan stok menipis aktif saat stok < 50 (di bawah 50%).
+  static bool isLowStock(Map<String, dynamic> p) {
+    final int stock = (p['stock'] as num?)?.toInt() ?? 0;
+    if (stock <= 0) return true;
+    final int? initialStock = (p['initial_stock'] as num?)?.toInt();
+    if (initialStock != null && initialStock > 0) {
+      return stock < (initialStock * 0.5);
+    }
+    final int? minStock = (p['min_stock'] as num?)?.toInt();
+    if (minStock != null && minStock > 0) {
+      return stock <= minStock;
+    }
+    return false;
+  }
+
   /// Ambil daftar produk dari backend Laravel atau fallback lokal
   static Future<List<Map<String, dynamic>>> getProducts() async {
     try {
@@ -269,6 +290,7 @@ class ApiService {
             final int sellingPrice = (map['selling_price'] as int?) ?? (map['price'] as int?) ?? 0;
             map['price'] = sellingPrice;
             map['selling_price'] = sellingPrice;
+            map['cost_price'] = (map['cost_price'] as num?)?.toInt() ?? 0;
 
             if (map['category'] is Map) {
               map['category_id'] = map['category']['id'];
@@ -278,9 +300,10 @@ class ApiService {
               map['jenis'] = map['category'];
             }
 
-            final int stock = (map['stock'] as int?) ?? 0;
-            final int minStock = (map['min_stock'] as int?) ?? 5;
-            map['low'] = (map['low'] == true) || (stock <= minStock);
+            final int stock = (map['stock'] as num?)?.toInt() ?? 0;
+            map['stock'] = stock;
+            map['initial_stock'] = (map['initial_stock'] as num?)?.toInt() ?? stock;
+            map['low'] = isLowStock(map);
             return map;
           }).toList();
 
@@ -299,23 +322,60 @@ class ApiService {
     } catch (_) {
       isConnectedNotifier.value = false;
     }
+    for (final p in _fallbackProducts) {
+      p['low'] = isLowStock(p);
+    }
     return List<Map<String, dynamic>>.from(_fallbackProducts);
   }
 
   /// Samakan cache produk lokal dengan data server tanpa membuang
-  /// produk yang ditambahkan saat offline (belum ada di server).
+  /// produk yang ditambahkan saat offline (belum ada di server) serta
+  /// menjaga atribut lokal seperti initial_stock, image, weight, dan unit.
   static void _mergeServerProducts(List<Map<String, dynamic>> serverItems) {
+    final existingByName = <String, Map<String, dynamic>>{
+      for (final p in _fallbackProducts)
+        ((p['name'] as String?) ?? '').toLowerCase(): p,
+    };
+
+    final mergedServer = serverItems.map((s) {
+      final key = ((s['name'] as String?) ?? '').toLowerCase();
+      final local = existingByName[key];
+      if (local != null) {
+        final int currentStock = (s['stock'] as num?)?.toInt() ?? 0;
+        final int localInitial = (local['initial_stock'] as num?)?.toInt() ?? currentStock;
+        s['initial_stock'] = currentStock > localInitial ? currentStock : localInitial;
+        if ((s['image'] == null || s['image'].toString().isEmpty) && local['image'] != null) {
+          s['image'] = local['image'];
+        }
+        if ((s['weight'] == null || s['weight'].toString().isEmpty) && local['weight'] != null) {
+          s['weight'] = local['weight'];
+        }
+        if ((s['cost_price'] == null || s['cost_price'] == 0) && local['cost_price'] != null) {
+          s['cost_price'] = local['cost_price'];
+        }
+        if ((s['unit'] == null || s['unit'].toString().isEmpty) && local['unit'] != null) {
+          s['unit'] = local['unit'];
+        }
+      }
+      s['low'] = isLowStock(s);
+      return s;
+    }).toList();
+
     final serverNames = <String>{
-      for (final p in serverItems) ((p['name'] as String?) ?? '').toLowerCase(),
+      for (final p in mergedServer) ((p['name'] as String?) ?? '').toLowerCase(),
     };
     final localOnly = _fallbackProducts
         .where((p) =>
             !serverNames.contains(((p['name'] as String?) ?? '').toLowerCase()))
+        .map((p) {
+          p['low'] = isLowStock(p);
+          return p;
+        })
         .toList();
     _fallbackProducts
       ..clear()
       ..addAll(localOnly)
-      ..addAll(serverItems);
+      ..addAll(mergedServer);
     _persistLocalData();
   }
 
@@ -328,14 +388,21 @@ class ApiService {
     String? category,
     int? costPrice,
     int? minStock,
+    int? initialStock,
     String? barcode,
     String? weight,
+    String? image,
   }) async {
     final effectiveCategory = (category != null && category.trim().isNotEmpty) ? category.trim() : 'Umum';
-    final effectiveMinStock = minStock ?? 5;
-    final effectiveCostPrice = costPrice ?? (price > 0 ? (price * 0.8).toInt() : 0);
+    final effectiveUnit = unit.trim().isNotEmpty ? unit.trim() : 'pcs';
+    final effectiveInitialStock = initialStock ?? stock;
+    // Batas stok menipis: di bawah 50% dari stok awal (misal stok awal 100 -> < 50 atau <= 49)
+    final effectiveMinStock = minStock ??
+        (effectiveInitialStock > 0 ? ((effectiveInitialStock - 1) ~/ 2) : 0);
+    final effectiveCostPrice = costPrice ?? 0;
     final effectiveBarcode = barcode?.trim() ?? '';
     final effectiveWeight = weight?.trim() ?? '';
+    final effectiveImage = image?.trim() ?? '';
 
     try {
       final uri = Uri.parse(ApiConfig.productsUrl);
@@ -361,7 +428,7 @@ class ApiService {
 
       final payload = {
         'name': name.trim(),
-        'unit': unit.trim(),
+        'unit': effectiveUnit,
         'cost_price': effectiveCostPrice,
         'selling_price': price,
         'price': price,
@@ -386,21 +453,24 @@ class ApiService {
           if (created is Map) {
             final serverObj = created['data'] is Map ? created['data'] : created;
             if (serverObj['id'] != null) {
-              _fallbackProducts.insert(0, {
+              final newMap = <String, dynamic>{
                 'id': serverObj['id'],
                 'name': name,
                 'price': price,
                 'selling_price': price,
                 'cost_price': effectiveCostPrice,
                 'stock': stock,
+                'initial_stock': effectiveInitialStock,
                 'min_stock': effectiveMinStock,
-                'unit': unit,
+                'unit': effectiveUnit,
                 'category': effectiveCategory,
                 'jenis': effectiveCategory,
                 'barcode': effectiveBarcode,
                 'weight': effectiveWeight,
-                'low': stock <= effectiveMinStock,
-              });
+                'image': effectiveImage,
+              };
+              newMap['low'] = isLowStock(newMap);
+              _fallbackProducts.insert(0, newMap);
               dataChangedNotifier.value++;
               _persistLocalData();
               return true;
@@ -413,21 +483,24 @@ class ApiService {
     }
 
     // Selalu simpan ke fallback lokal agar instan muncul di UI dan test lolos
-    _fallbackProducts.insert(0, {
+    final newMap = <String, dynamic>{
       'id': DateTime.now().millisecondsSinceEpoch,
       'name': name,
       'price': price,
       'selling_price': price,
       'cost_price': effectiveCostPrice,
       'stock': stock,
+      'initial_stock': effectiveInitialStock,
       'min_stock': effectiveMinStock,
-      'unit': unit,
+      'unit': effectiveUnit,
       'category': effectiveCategory,
       'jenis': effectiveCategory,
       'barcode': effectiveBarcode,
       'weight': effectiveWeight,
-      'low': stock <= effectiveMinStock,
-    });
+      'image': effectiveImage,
+    };
+    newMap['low'] = isLowStock(newMap);
+    _fallbackProducts.insert(0, newMap);
     dataChangedNotifier.value++;
     _persistLocalData();
     return true;
@@ -632,7 +705,7 @@ class ApiService {
       isConnectedNotifier.value = false;
     }
 
-    // Deduct stock from fallbackProducts
+    // Deduct stock from fallbackProducts & update low stock status (< 50% dari initial_stock)
     for (final item in cartItems) {
       final String name = (item.runtimeType.toString() == 'CartItem') ? (item as dynamic).name : (item['name'] as String? ?? '');
       final int qty = (item.runtimeType.toString() == 'CartItem') ? (item as dynamic).qty : ((item['qty'] as int?) ?? 1);
@@ -640,9 +713,11 @@ class ApiService {
       final idx = _fallbackProducts.indexWhere((p) => (p['name'] as String).toLowerCase() == name.toLowerCase());
       if (idx != -1) {
         final currentStock = (_fallbackProducts[idx]['stock'] as int?) ?? 0;
+        final initialStock = (_fallbackProducts[idx]['initial_stock'] as int?) ?? currentStock;
         final newStock = (currentStock - qty).clamp(0, 999999);
+        _fallbackProducts[idx]['initial_stock'] = initialStock;
         _fallbackProducts[idx]['stock'] = newStock;
-        _fallbackProducts[idx]['low'] = newStock <= 5;
+        _fallbackProducts[idx]['low'] = isLowStock(_fallbackProducts[idx]);
       }
     }
 
@@ -652,8 +727,22 @@ class ApiService {
         '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
 
     final serializedItems = cartItems.map((i) {
-      if (i.runtimeType.toString() == 'CartItem') return (i as dynamic).toMap();
-      return Map<String, dynamic>.from(i as Map);
+      final Map<String, dynamic> map = (i.runtimeType.toString() == 'CartItem')
+          ? Map<String, dynamic>.from((i as dynamic).toMap() as Map)
+          : Map<String, dynamic>.from(i as Map);
+      final String pName = (map['name'] ?? '').toString();
+      final match = _fallbackProducts.firstWhere(
+        (p) => (p['name'] as String? ?? '').toLowerCase() == pName.toLowerCase(),
+        orElse: () => <String, dynamic>{},
+      );
+      if (match.isNotEmpty) {
+        map['cost_price'] = (map['cost_price'] as num?)?.toInt() ?? (match['cost_price'] as num?)?.toInt() ?? 0;
+        map['unit'] = (map['unit']?.toString().isNotEmpty == true) ? map['unit'] : (match['unit'] ?? 'pcs');
+        map['category'] = (map['category']?.toString().isNotEmpty == true)
+            ? map['category']
+            : (match['category'] ?? match['jenis'] ?? 'Umum');
+      }
+      return map;
     }).toList();
 
     _fallbackTransactions.insert(0, {
@@ -673,6 +762,10 @@ class ApiService {
 
   /// Ambil data statistik ringkasan dashboard dari backend Laravel
   static Future<Map<String, dynamic>> getDashboardStats() async {
+    final int localOmzet = _fallbackTransactions.fold(0, (sum, t) => sum + ((t['amount'] as int?) ?? 0));
+    final int localTotalTrx = _fallbackTransactions.length;
+    final int localStokMenipis = _fallbackProducts.where((p) => isLowStock(p)).length;
+
     try {
       final uri = Uri.parse(ApiConfig.dashboardUrl);
       final res = await http.get(uri, headers: ApiConfig.defaultHeaders).timeout(const Duration(seconds: 5));
@@ -682,9 +775,13 @@ class ApiService {
         if (body is Map) {
           isConnectedNotifier.value = true;
 
-          final int omzet = (body['today']?['sales'] as int?) ?? (body['omzet'] as int?) ?? 0;
-          final int totalTrx = (body['today']?['transactions'] as int?) ?? (body['total_transaksi'] as int?) ?? 0;
-          final int stokMenipis = (body['low_stock_products']?['count'] as int?) ?? (body['stok_menipis'] as int?) ?? 0;
+          final int serverOmzet = (body['today']?['sales'] as int?) ?? (body['omzet'] as int?) ?? 0;
+          final int serverTotalTrx = (body['today']?['transactions'] as int?) ?? (body['total_transaksi'] as int?) ?? 0;
+          final int serverStokMenipis = (body['low_stock_products']?['count'] as int?) ?? (body['stok_menipis'] as int?) ?? 0;
+
+          final int omzet = localOmzet > serverOmzet ? localOmzet : serverOmzet;
+          final int totalTrx = localTotalTrx > serverTotalTrx ? localTotalTrx : serverTotalTrx;
+          final int stokMenipis = _fallbackProducts.isNotEmpty ? localStokMenipis : serverStokMenipis;
 
           String produkTerlaris = '-';
           if (body['top_products'] is List && (body['top_products'] as List).isNotEmpty) {
@@ -714,10 +811,10 @@ class ApiService {
     }
 
     // Kalkulasi dinamis dari fallback lokal
-    int omzet = _fallbackTransactions.fold(0, (sum, t) => sum + ((t['amount'] as int?) ?? 0));
-    int totalTrx = _fallbackTransactions.length;
+    int omzet = localOmzet;
+    int totalTrx = localTotalTrx;
     int totalProduk = _fallbackProducts.length;
-    int stokMenipis = _fallbackProducts.where((p) => ((p['stock'] as int?) ?? 0) <= 5).length;
+    int stokMenipis = localStokMenipis;
 
     Map<String, int> productSales = {};
     for (final t in _fallbackTransactions) {
@@ -771,22 +868,81 @@ class ApiService {
       isConnectedNotifier.value = false;
     }
 
-    // Fallback lokal: penjualan dihitung dari transaksi tersimpan
+    // Fallback lokal: penjualan & modal (COGS / pembelian) dihitung dari transaksi & produk tersimpan
     final int revenue = _fallbackTransactions.fold(0, (sum, t) => sum + ((t['amount'] as int?) ?? 0));
+    int cogs = 0;
+    final Map<String, int> categoryCosts = {};
+
+    for (final t in _fallbackTransactions) {
+      final items = t['cartItems'] as List? ?? [];
+      for (final item in items) {
+        if (item is Map) {
+          final String pName = (item['name'] ?? '').toString();
+          final int qty = (item['qty'] as num?)?.toInt() ?? (item['quantity'] as num?)?.toInt() ?? 1;
+          int unitCost = (item['cost_price'] as num?)?.toInt() ?? 0;
+          String cat = (item['category'] ?? '').toString();
+          if (unitCost <= 0 || cat.isEmpty) {
+            final match = _fallbackProducts.firstWhere(
+              (p) => (p['name'] as String? ?? '').toLowerCase() == pName.toLowerCase(),
+              orElse: () => <String, dynamic>{},
+            );
+            if (match.isNotEmpty) {
+              if (unitCost <= 0) unitCost = (match['cost_price'] as num?)?.toInt() ?? 0;
+              if (cat.isEmpty) cat = (match['category'] ?? match['jenis'] ?? 'Umum').toString();
+            }
+          }
+          if (cat.isEmpty) cat = 'Umum';
+          final int itemTotalCost = unitCost * qty;
+          cogs += itemTotalCost;
+          if (itemTotalCost > 0) {
+            categoryCosts[cat] = (categoryCosts[cat] ?? 0) + itemTotalCost;
+          }
+        }
+      }
+    }
+
+    // Jika belum ada transaksi dengan cost_price tetapi ada produk dengan modal stok awal,
+    // gunakan modal produk untuk komposisi pembelian per kategori
+    int totalProductModal = 0;
+    for (final p in _fallbackProducts) {
+      final int cost = (p['cost_price'] as num?)?.toInt() ?? 0;
+      final int initStock = (p['initial_stock'] as num?)?.toInt() ?? (p['stock'] as num?)?.toInt() ?? 0;
+      final String cat = (p['category'] ?? p['jenis'] ?? 'Umum').toString();
+      final int modal = cost * (initStock > 0 ? initStock : 1);
+      totalProductModal += modal;
+      if (categoryCosts.isEmpty && modal > 0) {
+        categoryCosts[cat] = (categoryCosts[cat] ?? 0) + modal;
+      }
+    }
+
+    final int purchases = cogs > 0 ? cogs : totalProductModal;
+    final int grossProfit = revenue - cogs;
+    final int netProfit = grossProfit;
+    final int totalCatCost = categoryCosts.values.fold(0, (a, b) => a + b);
+    final List<Map<String, dynamic>> expenseCategories = categoryCosts.entries.map((e) {
+      final double pct = totalCatCost > 0 ? (e.value / totalCatCost) * 100.0 : 0.0;
+      return {
+        'category': e.key,
+        'total': e.value,
+        'percentage': pct,
+      };
+    }).toList()
+      ..sort((a, b) => (b['total'] as int).compareTo(a['total'] as int));
+
     return {
       'period': period,
       'offline': true,
       'summary': {
         'transactions_count': _fallbackTransactions.length,
         'revenue': revenue,
-        'cogs': 0,
-        'gross_profit': revenue,
-        'gross_margin_percentage': revenue > 0 ? 100.0 : 0.0,
-        'operational_expenses': 0,
-        'net_profit': revenue,
-        'net_margin_percentage': revenue > 0 ? 100.0 : 0.0,
+        'cogs': cogs,
+        'gross_profit': grossProfit,
+        'gross_margin_percentage': revenue > 0 ? (grossProfit / revenue) * 100.0 : 0.0,
+        'operational_expenses': purchases,
+        'net_profit': netProfit,
+        'net_margin_percentage': revenue > 0 ? (netProfit / revenue) * 100.0 : 0.0,
       },
-      'expense_categories': <dynamic>[],
+      'expense_categories': expenseCategories,
       'product_breakdown': <dynamic>[],
     };
   }
@@ -828,16 +984,42 @@ class ApiService {
   static Map<String, dynamic> _localSalesTrends() {
     final byDay = <String, int>{};
     final byMonth = <String, int>{};
+    final Map<String, Map<String, dynamic>> productAgg = {};
+
     for (final t in _fallbackTransactions) {
       final int amount = (t['amount'] as int?) ?? 0;
       final String date = t['date']?.toString() ?? '';
-      if (date.isEmpty) continue;
-      byDay[date] = (byDay[date] ?? 0) + amount;
-      if (date.length >= 7) {
-        final monthKey = date.substring(0, 7);
-        byMonth[monthKey] = (byMonth[monthKey] ?? 0) + amount;
+      if (date.isNotEmpty) {
+        byDay[date] = (byDay[date] ?? 0) + amount;
+        if (date.length >= 7) {
+          final monthKey = date.substring(0, 7);
+          byMonth[monthKey] = (byMonth[monthKey] ?? 0) + amount;
+        }
+      }
+
+      final items = t['cartItems'] as List? ?? [];
+      for (final item in items) {
+        if (item is Map) {
+          final String name = (item['name'] ?? '').toString();
+          if (name.isEmpty) continue;
+          final int qty = (item['qty'] as num?)?.toInt() ?? (item['quantity'] as num?)?.toInt() ?? 1;
+          final int price = (item['price'] as num?)?.toInt() ?? (item['unit_price'] as num?)?.toInt() ?? 0;
+          final String unit = (item['unit'] ?? 'pcs').toString();
+          final current = productAgg[name] ?? {
+            'name': name,
+            'unit': unit,
+            'total_sold': 0,
+            'total_revenue': 0,
+          };
+          current['total_sold'] = (current['total_sold'] as int) + qty;
+          current['total_revenue'] = (current['total_revenue'] as int) + (price * qty);
+          productAgg[name] = current;
+        }
       }
     }
+
+    final topProducts = productAgg.values.toList()
+      ..sort((a, b) => (b['total_sold'] as int).compareTo(a['total_sold'] as int));
 
     List<Map<String, dynamic>> toList(Map<String, int> source, String keyName) {
       final keys = source.keys.toList()..sort();
@@ -849,7 +1031,7 @@ class ApiService {
       'trend7': toList(byDay, 'date'),
       'trend30': toList(byDay, 'date'),
       'monthly': toList(byMonth, 'month'),
-      'top_products': <dynamic>[],
+      'top_products': topProducts.take(5).toList(),
       'today': <String, dynamic>{},
     };
   }
