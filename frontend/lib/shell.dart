@@ -4,6 +4,7 @@ import 'main.dart';
 import 'pages/keranjang_page.dart';
 import 'pages/produk_page.dart';
 import 'pages/transaksi_page.dart';
+import 'pages/analytics_page.dart';
 import 'pages/profil_page.dart';
 import 'services/api_service.dart';
 import 'services/navigation_service.dart';
@@ -39,6 +40,7 @@ class _MainShellState extends State<MainShell> {
     ProdukPage(),
     KeranjangPage(),
     TransaksiPage(),
+    AnalyticsPage(),
     ProfilPage(),
   ];
 

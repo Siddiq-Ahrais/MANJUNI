@@ -105,6 +105,8 @@ class ApiConfig {
   static String get transactionsUrl => '$baseUrl/transactions';
   static String get transaksiUrl => transactionsUrl; // Kompatibilitas mundur
   static String get dashboardUrl => '$baseUrl/dashboard/summary';
+  static String get reportsProfitLossUrl => '$baseUrl/reports/profit-loss';
+  static String get reportsCashFlowUrl => '$baseUrl/reports/cash-flow';
   static String get expensesUrl => '$baseUrl/expenses';
   static String get capitalUrl => '$baseUrl/capital';
   static String get plansUrl => '$baseUrl/plans';

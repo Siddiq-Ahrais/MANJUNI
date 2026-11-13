@@ -292,7 +292,8 @@ class _TransaksiPageState extends State<TransaksiPage> {
                     ElevatedButton(
                       onPressed: () {
                         Navigator.pop(ctx);
-                        ApiService.resetAllData();
+                        // Hanya kosongkan riwayat transaksi; produk tetap ada.
+                        ApiService.resetTransactions();
                         _loadTransactions();
                       },
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),

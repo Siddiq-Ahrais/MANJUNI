@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'analytics_page.dart';
+
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
 
@@ -8,31 +10,55 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage> {
+  /// Saat `true`, konten di bawah toggle menampilkan statistik Analytics
+  /// (dari `AnalyticsView`) alih-alih konten Overview. Dibuka in-place
+  /// supaya navbar bawah (Profil, dst.) tetap tampil.
+  bool _showAnalytics = false;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 16),
-                _buildHeader(),
-                const SizedBox(height: 24),
-                _buildTabButtons(),
-                const SizedBox(height: 24),
-                _buildOverviewSection(),
-                const SizedBox(height: 24),
-                _buildTopSellingSection(),
-                const SizedBox(height: 24),
-                _buildRecentActivitySection(),
-                const SizedBox(height: 24),
-              ],
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: _buildHeader(),
             ),
-          ),
+            const SizedBox(height: 24),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: _buildTabButtons(),
+            ),
+            const SizedBox(height: 24),
+            Expanded(
+              child: _showAnalytics
+                  ? Container(
+                      width: double.infinity,
+                      color: const Color(0xFFF8F9FA),
+                      child: const AnalyticsView(),
+                    )
+                  : SingleChildScrollView(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildOverviewSection(),
+                            const SizedBox(height: 24),
+                            _buildTopSellingSection(),
+                            const SizedBox(height: 24),
+                            _buildRecentActivitySection(),
+                            const SizedBox(height: 24),
+                          ],
+                        ),
+                      ),
+                    ),
+            ),
+          ],
         ),
       ),
     );
@@ -106,30 +132,40 @@ class _DashboardPageState extends State<DashboardPage> {
       ),
       child: Row(
         children: [
-          Expanded(
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: const [
-                  BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))
-                ],
-              ),
-              child: const Center(
-                child: Text('Overview', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-              ),
-            ),
-          ),
-          const Expanded(
-            child: Padding(
-              padding: EdgeInsets.symmetric(vertical: 12),
-              child: Center(
-                child: Text('Analytics', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold, fontSize: 14)),
-              ),
-            ),
-          ),
+          Expanded(child: _tabButton('Overview', active: !_showAnalytics)),
+          Expanded(child: _tabButton('Analytics', active: _showAnalytics)),
         ],
+      ),
+    );
+  }
+
+  Widget _tabButton(String label, {required bool active}) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        final target = label == 'Analytics';
+        if (_showAnalytics == target) return;
+        setState(() => _showAnalytics = target);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: active ? Colors.white : Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: active
+              ? const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))]
+              : null,
+        ),
+        child: Center(
+          child: Text(
+            label,
+            style: TextStyle(
+              color: active ? Colors.black : Colors.grey,
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+            ),
+          ),
+        ),
       ),
     );
   }

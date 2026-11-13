@@ -674,38 +674,6 @@ class _ProfilPageState extends State<ProfilPage> {
                       );
                     },
                   ),
-                  const Divider(height: 1, indent: 64, color: Color(0xFFF0F0F0)),
-                  _MenuRowItem(
-                    icon: Icons.print_outlined,
-                    iconBg: const Color(0xFFFFE0B2),
-                    iconColor: const Color(0xFFD97706),
-                    title: 'Printer \u0026 Struk',
-                    onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Printer Thermal 58mm / 80mm Siap Digunakan'),
-                          behavior: SnackBarBehavior.floating,
-                          duration: Duration(seconds: 1),
-                        ),
-                      );
-                    },
-                  ),
-                  const Divider(height: 1, indent: 64, color: Color(0xFFF0F0F0)),
-                  _MenuRowItem(
-                    icon: Icons.upload_outlined,
-                    iconBg: const Color(0xFFD1F2D9),
-                    iconColor: const Color(0xFF1E874B),
-                    title: 'Cadangkan Data',
-                    onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Data lokal berhasil dicadangkan ke memori'),
-                          behavior: SnackBarBehavior.floating,
-                          duration: Duration(seconds: 1),
-                        ),
-                      );
-                    },
-                  ),
                 ],
               ),
             ),
@@ -716,12 +684,15 @@ class _ProfilPageState extends State<ProfilPage> {
               width: double.infinity,
               height: 48,
               child: OutlinedButton.icon(
-                onPressed: () {
-                  ApiService.resetAllData();
+                onPressed: () async {
+                  // Keluar hanya mengakhiri sesi login; produk & data
+                  // terdaftar tetap tersimpan di perangkat.
+                  await ApiService.logout();
+                  if (!context.mounted) return;
                   CartService.clear();
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text('Berhasil keluar. Semua data transaksi & produk di-reset.'),
+                      content: Text('Berhasil keluar. Produk terdaftar tetap tersimpan.'),
                       behavior: SnackBarBehavior.floating,
                       duration: Duration(seconds: 2),
                     ),

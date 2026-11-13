@@ -3,9 +3,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:majunih/pages/profil_page.dart';
 import 'package:majunih/services/api_service.dart';
 import 'package:majunih/services/cart_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   setUp(() {
+    // Gunakan penyimpanan in-memory agar test tidak menyentuh platform channel asli
+    SharedPreferences.setMockInitialValues({});
     ApiService.resetAllData();
     CartService.clear();
   });

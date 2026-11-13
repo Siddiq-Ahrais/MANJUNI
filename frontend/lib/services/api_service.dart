@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'api_config.dart';
 
 class ApiService {
@@ -25,6 +26,59 @@ class ApiService {
   static final List<Map<String, dynamic>> _fallbackTransactions = [];
   static final List<Map<String, dynamic>> _fallbackCustomers = [];
 
+  // Kunci penyimpanan lokal (SharedPreferences) agar produk & data tetap ada
+  // setelah aplikasi ditutup / user keluar lalu masuk kembali.
+  /// Kunci produk di penyimpanan perangkat (exposed untuk keperluan test).
+  @visibleForTesting
+  static const String productsStorageKey = 'mj_products_v1';
+  static const String _kProductsKey = productsStorageKey;
+  static const String _kCustomersKey = 'mj_customers_v1';
+  static const String _kTransactionsKey = 'mj_transactions_v1';
+  static bool _localDataLoaded = false;
+
+  /// Muat data fallback yang tersimpan di perangkat (SharedPreferences).
+  /// Dipanggil sekali di main() sebelum runApp.
+  static Future<void> loadLocalData({bool force = false}) async {
+    if (_localDataLoaded && !force) return;
+    _localDataLoaded = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _fallbackProducts
+        ..clear()
+        ..addAll(_decodeStoredList(prefs.getString(_kProductsKey)));
+      _fallbackCustomers
+        ..clear()
+        ..addAll(_decodeStoredList(prefs.getString(_kCustomersKey)));
+      _fallbackTransactions
+        ..clear()
+        ..addAll(_decodeStoredList(prefs.getString(_kTransactionsKey)));
+    } catch (_) {
+      // Penyimpanan tidak tersedia (mis. saat widget test) -> pakai data memori saja.
+    }
+  }
+
+  static List<Map<String, dynamic>> _decodeStoredList(String? raw) {
+    if (raw == null || raw.isEmpty) return [];
+    try {
+      final List list = jsonDecode(raw) as List;
+      return list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Simpan data fallback ke penyimpanan perangkat (best-effort).
+  static Future<void> _persistLocalData() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kProductsKey, jsonEncode(_fallbackProducts));
+      await prefs.setString(_kCustomersKey, jsonEncode(_fallbackCustomers));
+      await prefs.setString(_kTransactionsKey, jsonEncode(_fallbackTransactions));
+    } catch (_) {
+      // Tidak bisa menyimpan (mis. saat widget test) -> abaikan.
+    }
+  }
+
   static void resetAllData() {
     _fallbackProducts.clear();
     _fallbackTransactions.clear();
@@ -33,6 +87,14 @@ class ApiService {
     userNotifier.value = null;
     authStateNotifier.value = false;
     dataChangedNotifier.value++;
+    _persistLocalData(); // bersihkan juga salinan tersimpan di perangkat
+  }
+
+  /// Kosongkan hanya riwayat transaksi lokal; produk & pelanggan tetap ada.
+  static void resetTransactions() {
+    _fallbackTransactions.clear();
+    dataChangedNotifier.value++;
+    _persistLocalData();
   }
 
   /// Ambil daftar pelanggan (lokal/fallback)
@@ -48,6 +110,7 @@ class ApiService {
       'phone': phone ?? '',
     });
     dataChangedNotifier.value++;
+    _persistLocalData();
     return true;
   }
 
@@ -221,7 +284,10 @@ class ApiService {
             return map;
           }).toList();
 
-          return mapped;
+          // Samakan cache lokal dengan data server lalu simpan ke perangkat,
+          // sehingga daftar produk tetap ada setelah aplikasi ditutup.
+          _mergeServerProducts(mapped);
+          return List<Map<String, dynamic>>.from(_fallbackProducts);
         }
       }
 
@@ -234,6 +300,23 @@ class ApiService {
       isConnectedNotifier.value = false;
     }
     return List<Map<String, dynamic>>.from(_fallbackProducts);
+  }
+
+  /// Samakan cache produk lokal dengan data server tanpa membuang
+  /// produk yang ditambahkan saat offline (belum ada di server).
+  static void _mergeServerProducts(List<Map<String, dynamic>> serverItems) {
+    final serverNames = <String>{
+      for (final p in serverItems) ((p['name'] as String?) ?? '').toLowerCase(),
+    };
+    final localOnly = _fallbackProducts
+        .where((p) =>
+            !serverNames.contains(((p['name'] as String?) ?? '').toLowerCase()))
+        .toList();
+    _fallbackProducts
+      ..clear()
+      ..addAll(localOnly)
+      ..addAll(serverItems);
+    _persistLocalData();
   }
 
   /// Tambah produk baru ke backend Laravel & cache lokal
@@ -320,6 +403,7 @@ class ApiService {
       'low': stock <= effectiveMinStock,
     });
     dataChangedNotifier.value++;
+    _persistLocalData();
     return true;
   }
 
@@ -335,6 +419,7 @@ class ApiService {
 
     _fallbackProducts.removeWhere((p) => p['id'] == id || p['name'] == id);
     dataChangedNotifier.value++;
+    _persistLocalData();
     return true;
   }
 
@@ -499,6 +584,7 @@ class ApiService {
     _fallbackTransactions.insert(0, {
       'id': 'TRX-0${_fallbackTransactions.length + 1}',
       'time': timeStr,
+      'date': now.toIso8601String().substring(0, 10),
       'items': itemsSummary,
       'method': paymentMethod,
       'amount': totalAmount,
@@ -506,6 +592,7 @@ class ApiService {
       'cartItems': serializedItems,
     });
     dataChangedNotifier.value++;
+    _persistLocalData();
     return true;
   }
 
@@ -581,6 +668,114 @@ class ApiService {
       'produk_terlaris': produkTerlaris,
       'stok_menipis': stokMenipis,
       'total_produk': totalProduk,
+    };
+  }
+
+  /// Ambil laporan laba-rugi (penjualan vs pembelian/beban) dari backend
+  /// untuk halaman Analytics. Fallback lokal jika offline.
+  static Future<Map<String, dynamic>> getProfitLossReport({String period = 'monthly'}) async {
+    try {
+      final uri = Uri.parse('${ApiConfig.reportsProfitLossUrl}?period=$period');
+      final res = await http
+          .get(uri, headers: ApiConfig.defaultHeaders)
+          .timeout(const Duration(seconds: 5));
+
+      if (res.statusCode == 200) {
+        final body = jsonDecode(res.body);
+        if (body is Map) {
+          isConnectedNotifier.value = true;
+          lastErrorNotifier.value = null;
+          return Map<String, dynamic>.from(body);
+        }
+      }
+
+      if (res.statusCode == 401) {
+        _handleUnauthorized();
+      }
+    } catch (_) {
+      isConnectedNotifier.value = false;
+    }
+
+    // Fallback lokal: penjualan dihitung dari transaksi tersimpan
+    final int revenue = _fallbackTransactions.fold(0, (sum, t) => sum + ((t['amount'] as int?) ?? 0));
+    return {
+      'period': period,
+      'offline': true,
+      'summary': {
+        'transactions_count': _fallbackTransactions.length,
+        'revenue': revenue,
+        'cogs': 0,
+        'gross_profit': revenue,
+        'gross_margin_percentage': revenue > 0 ? 100.0 : 0.0,
+        'operational_expenses': 0,
+        'net_profit': revenue,
+        'net_margin_percentage': revenue > 0 ? 100.0 : 0.0,
+      },
+      'expense_categories': <dynamic>[],
+      'product_breakdown': <dynamic>[],
+    };
+  }
+
+  /// Ambil tren penjualan (7 hari / 30 hari / bulanan) & produk terlaris
+  /// dari backend (endpoint dashboard/summary). Fallback lokal jika offline.
+  static Future<Map<String, dynamic>> getSalesTrends() async {
+    try {
+      final uri = Uri.parse(ApiConfig.dashboardUrl);
+      final res = await http.get(uri, headers: ApiConfig.defaultHeaders).timeout(const Duration(seconds: 5));
+
+      if (res.statusCode == 200) {
+        final body = jsonDecode(res.body);
+        if (body is Map) {
+          isConnectedNotifier.value = true;
+          lastErrorNotifier.value = null;
+          final trend = body['sales_trend'];
+          return {
+            'trend7': (trend is Map ? trend['last_7_days'] : null) ?? <dynamic>[],
+            'trend30': (trend is Map ? trend['last_30_days'] : null) ?? <dynamic>[],
+            'monthly': (trend is Map ? trend['monthly'] : null) ?? <dynamic>[],
+            'top_products': body['top_products'] ?? <dynamic>[],
+            'today': body['today'] ?? <String, dynamic>{},
+          };
+        }
+      }
+
+      if (res.statusCode == 401) {
+        _handleUnauthorized();
+      }
+    } catch (_) {
+      isConnectedNotifier.value = false;
+    }
+
+    return _localSalesTrends();
+  }
+
+  /// Kalkulasi tren dari transaksi fallback lokal (mode offline)
+  static Map<String, dynamic> _localSalesTrends() {
+    final byDay = <String, int>{};
+    final byMonth = <String, int>{};
+    for (final t in _fallbackTransactions) {
+      final int amount = (t['amount'] as int?) ?? 0;
+      final String date = t['date']?.toString() ?? '';
+      if (date.isEmpty) continue;
+      byDay[date] = (byDay[date] ?? 0) + amount;
+      if (date.length >= 7) {
+        final monthKey = date.substring(0, 7);
+        byMonth[monthKey] = (byMonth[monthKey] ?? 0) + amount;
+      }
+    }
+
+    List<Map<String, dynamic>> toList(Map<String, int> source, String keyName) {
+      final keys = source.keys.toList()..sort();
+      return keys.map((k) => {keyName: k, 'total': source[k], 'count': 0}).toList();
+    }
+
+    return {
+      'offline': true,
+      'trend7': toList(byDay, 'date'),
+      'trend30': toList(byDay, 'date'),
+      'monthly': toList(byMonth, 'month'),
+      'top_products': <dynamic>[],
+      'today': <String, dynamic>{},
     };
   }
 }

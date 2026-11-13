@@ -99,13 +99,23 @@ class FullSidebar extends StatelessWidget {
                     ),
                     const SizedBox(height: 10),
 
-                    // 5. Profil
+                    // 5. Analytics
+                    _SidebarMenuItem(
+                      icon: Icons.insert_chart_outlined_rounded,
+                      title: 'Analytics',
+                      subtitle: 'Diagram penjualan & pembelian',
+                      isSelected: selectedIndex == 4,
+                      onTap: () => onItemSelected(4),
+                    ),
+                    const SizedBox(height: 10),
+
+                    // 6. Profil
                     _SidebarMenuItem(
                       icon: Icons.person_rounded,
                       title: 'Profil',
                       subtitle: 'Pengaturan akun toko & konfigurasi API',
-                      isSelected: selectedIndex == 4,
-                      onTap: () => onItemSelected(4),
+                      isSelected: selectedIndex == 5,
+                      onTap: () => onItemSelected(5),
                     ),
                     const SizedBox(height: 28),
 

@@ -8,8 +8,11 @@ import 'widgets/custom_app_bar.dart';
 export 'app.dart';
 export 'shell.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Muat produk & data yang tersimpan di perangkat agar tetap ada
+  // saat aplikasi dibuka kembali setelah ditutup / user keluar.
+  await ApiService.loadLocalData();
   runApp(const MyApp());
 }
 

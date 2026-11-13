@@ -3,9 +3,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:majunih/pages/produk_page.dart';
 import 'package:majunih/services/api_service.dart';
 import 'package:majunih/services/cart_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   setUp(() {
+    // Gunakan penyimpanan in-memory agar test tidak menyentuh platform channel asli
+    SharedPreferences.setMockInitialValues({});
     ApiService.resetAllData();
     CartService.clear();
   });
@@ -130,5 +133,68 @@ void main() {
     // CartService should now have 1 item
     expect(CartService.totalCount, 1);
     expect(CartService.cartNotifier.value.first.name, 'Teh Botol Sosro');
+  });
+
+  test('Produk tersimpan ke penyimpanan perangkat saat ditambahkan', () async {
+    SharedPreferences.setMockInitialValues({});
+    ApiService.resetAllData();
+
+    await ApiService.addProduct(
+      name: 'Minyak Goreng Tropical 2L',
+      price: 38000,
+      stock: 10,
+      unit: 'pcs',
+      category: 'Sembako',
+    );
+
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getString(ApiService.productsStorageKey);
+    expect(stored, isNotNull);
+    expect(stored!.contains('Minyak Goreng Tropical 2L'), isTrue);
+  });
+
+  test('Produk tetap ada setelah aplikasi ditutup & dibuka kembali', () async {
+    // Sesi 1: user menambah produk lalu menutup aplikasi
+    SharedPreferences.setMockInitialValues({});
+    ApiService.resetAllData();
+    await ApiService.addProduct(
+      name: 'Minyak Goreng Tropical 2L',
+      price: 38000,
+      stock: 10,
+      unit: 'pcs',
+      category: 'Sembako',
+    );
+    final savedJson = (await SharedPreferences.getInstance())
+        .getString(ApiService.productsStorageKey)!;
+
+    // Sesi 2: aplikasi dibuka ulang -> memori kosong, data perangkat dimuat kembali
+    SharedPreferences.setMockInitialValues({
+      ApiService.productsStorageKey: savedJson,
+    });
+    await ApiService.loadLocalData(force: true);
+
+    final list = await ApiService.getProducts();
+    expect(
+      list.where((p) => p['name'] == 'Minyak Goreng Tropical 2L'),
+      isNotEmpty,
+    );
+  });
+
+  test('Produk tetap ada setelah user keluar (logout)', () async {
+    SharedPreferences.setMockInitialValues({});
+    ApiService.resetAllData();
+    await ApiService.addProduct(
+      name: 'Kopi Kapal Api',
+      price: 3000,
+      stock: 10,
+      unit: 'pcs',
+      category: 'Minuman',
+    );
+
+    // Keluar hanya mengakhiri sesi login, tidak menghapus produk terdaftar
+    await ApiService.logout();
+
+    final list = await ApiService.getProducts();
+    expect(list.where((p) => p['name'] == 'Kopi Kapal Api'), isNotEmpty);
   });
 }
