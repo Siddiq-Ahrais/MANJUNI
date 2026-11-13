@@ -15,7 +15,7 @@ void main() {
     NavigationService.selectedIndex.value = 0;
   });
 
-  testWidgets('P2 & P4: DashboardPage header menu opens drawer, and profile taps link to Profile page (index 4)',
+  testWidgets('P2 (Delete) & P4 (Update): 3-line menu button on Overview is deleted, and tapping profile links to Profile settings (index 4)',
       (WidgetTester tester) async {
     tester.view.physicalSize = const Size(800, 1400);
     tester.view.devicePixelRatio = 1.0;
@@ -24,43 +24,23 @@ void main() {
       tester.view.resetDevicePixelRatio();
     });
 
-    final scaffoldKey = GlobalKey<ScaffoldState>();
-
     await tester.pumpWidget(
-      MaterialApp(
+      const MaterialApp(
         home: Scaffold(
-          key: scaffoldKey,
-          drawer: const Drawer(
-            child: Text('Sidebar Drawer Terbuka'),
-          ),
-          body: const DashboardPage(),
+          body: DashboardPage(),
         ),
       ),
     );
     await tester.pumpAndSettle();
 
-    // Verify initial state
-    expect(find.byIcon(Icons.menu), findsOneWidget);
-    expect(find.text('Sidebar Drawer Terbuka'), findsNothing);
+    // P2 - Delete: Verify 3-line menu button is deleted from Overview tab
+    expect(find.byIcon(Icons.menu), findsNothing);
 
-    // P2: Tap 3-line hamburger menu button
-    await tester.tap(find.byIcon(Icons.menu));
-    await tester.pumpAndSettle();
-
-    // Drawer is now open!
-    expect(find.text('Sidebar Drawer Terbuka'), findsOneWidget);
-
-    // Close drawer
-    scaffoldKey.currentState?.closeDrawer();
-    await tester.pumpAndSettle();
-    expect(find.text('Sidebar Drawer Terbuka'), findsNothing);
-
-    // P4: Tap profile avatar/section in overview header
+    // P4 - Update: Tap profile avatar/section in overview header links to Profile page (index 4)
     expect(NavigationService.selectedIndex.value, 0);
     await tester.tap(find.byIcon(Icons.person_rounded));
     await tester.pumpAndSettle();
 
-    // NavigationService has navigated to index 4 (ProfilPage)
     expect(NavigationService.selectedIndex.value, 4);
   });
 

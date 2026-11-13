@@ -242,8 +242,9 @@ class _DashboardPageState extends State<DashboardPage> {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         GestureDetector(
+          key: const ValueKey('overview_profile_header'),
           onTap: () {
-            NavigationService.navigateTo(4); // Navigasi ke Pengaturan Profil (P4)
+            NavigationService.navigateTo(4); // P4: Navigasi ke Pengaturan Profil
           },
           behavior: HitTestBehavior.opaque,
           child: Row(
@@ -288,24 +289,6 @@ class _DashboardPageState extends State<DashboardPage> {
                 ],
               ),
             ],
-          ),
-        ),
-        GestureDetector(
-          onTap: () {
-            if (Scaffold.maybeOf(context)?.hasDrawer ?? false) {
-              Scaffold.of(context).openDrawer();
-            } else {
-              NavigationService.openDrawer();
-            }
-          },
-          behavior: HitTestBehavior.opaque,
-          child: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.grey.shade300),
-            ),
-            child: const Icon(Icons.menu, size: 20),
           ),
         ),
       ],
