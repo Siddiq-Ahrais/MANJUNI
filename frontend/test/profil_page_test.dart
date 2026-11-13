@@ -14,7 +14,7 @@ void main() {
   });
 
   testWidgets(
-      'ProfilPage shows 0 registered products and 0 Orang for Pelanggan for new user',
+      'ProfilPage shows 0 registered products, 0 transactions, and Cadangkan Data (no Pelanggan/Info Toko)',
       (WidgetTester tester) async {
     tester.view.physicalSize = const Size(800, 1400);
     tester.view.devicePixelRatio = 1.0;
@@ -30,19 +30,18 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Verify "Pelanggan Kasbon" is completely absent
-    expect(find.text('Pelanggan Kasbon'), findsNothing);
+    // Verify Pelanggan & Info Toko are removed per P0
+    expect(find.text('Pelanggan'), findsNothing);
+    expect(find.text('Info Toko'), findsNothing);
 
-    // Verify "Pelanggan" is present and starts at 0 Orang
-    expect(find.text('Pelanggan'), findsNWidgets(2));
-    expect(find.text('0 Orang'), findsOneWidget);
-
-    // Verify "Produk Terdaftar" is present and starts at 0
+    // Verify Produk Terdaftar, Total Transaksi, and Cadangkan Data are present
     expect(find.text('Produk Terdaftar'), findsOneWidget);
-    expect(find.text('0'), findsOneWidget);
+    expect(find.text('Total Transaksi'), findsOneWidget);
+    expect(find.text('Cadangkan Data'), findsOneWidget);
+    expect(find.text('0'), findsNWidgets(2));
   });
 
-  testWidgets('ProfilPage dynamically updates when products and customers are added',
+  testWidgets('ProfilPage dynamically updates and exports transaction CSV via Cadangkan Data',
       (WidgetTester tester) async {
     tester.view.physicalSize = const Size(800, 1400);
     tester.view.devicePixelRatio = 1.0;
@@ -58,11 +57,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Initially 0 products and 0 Orang
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('0 Orang'), findsOneWidget);
-
-    // Add a product via ApiService
+    // Add a product and create a transaction
     await ApiService.addProduct(
       name: 'Kopi Kapal Api',
       price: 3000,
@@ -70,16 +65,25 @@ void main() {
       unit: 'pcs',
       category: 'Minuman',
     );
+    await ApiService.createTransaction(
+      cartItems: [
+        CartItem(name: 'Kopi Kapal Api', price: 3000, unit: 'pcs', maxStock: 10, qty: 2),
+      ],
+      itemsSummary: 'Kopi Kapal Api (2x)',
+      paymentMethod: 'Tunai',
+      totalAmount: 6000,
+    );
     await tester.pumpAndSettle();
 
-    // Product count dynamically increments to 1
-    expect(find.text('1'), findsOneWidget);
+    // Both counts dynamically increment to 1
+    expect(find.text('1'), findsNWidgets(2));
 
-    // Add a customer via ApiService
-    await ApiService.addCustomer(name: 'Pak Budi');
+    // Open Cadangkan Data export dialog
+    await tester.tap(find.text('Cadangkan Data'));
     await tester.pumpAndSettle();
 
-    // Customer count dynamically increments to 1 Orang
-    expect(find.text('1 Orang'), findsOneWidget);
+    expect(find.text('Cadangkan Data Transaksi'), findsOneWidget);
+    expect(find.textContaining('id_transaksi,waktu_transaksi,jenis_pembayaran'), findsOneWidget);
+    expect(find.textContaining('3000,6000'), findsOneWidget);
   });
 }

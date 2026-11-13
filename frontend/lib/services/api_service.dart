@@ -381,6 +381,32 @@ class ApiService {
 
       if (res.statusCode == 200 || res.statusCode == 201) {
         isConnectedNotifier.value = true;
+        try {
+          final created = jsonDecode(res.body);
+          if (created is Map) {
+            final serverObj = created['data'] is Map ? created['data'] : created;
+            if (serverObj['id'] != null) {
+              _fallbackProducts.insert(0, {
+                'id': serverObj['id'],
+                'name': name,
+                'price': price,
+                'selling_price': price,
+                'cost_price': effectiveCostPrice,
+                'stock': stock,
+                'min_stock': effectiveMinStock,
+                'unit': unit,
+                'category': effectiveCategory,
+                'jenis': effectiveCategory,
+                'barcode': effectiveBarcode,
+                'weight': effectiveWeight,
+                'low': stock <= effectiveMinStock,
+              });
+              dataChangedNotifier.value++;
+              _persistLocalData();
+              return true;
+            }
+          }
+        } catch (_) {}
       }
     } catch (_) {
       isConnectedNotifier.value = false;
@@ -462,6 +488,7 @@ class ApiService {
             return {
               'id': map['id'] != null ? 'TRX-0${map['id']}' : 'TRX-${DateTime.now().millisecondsSinceEpoch}',
               'raw_id': map['id'],
+              'date': map['transaction_date']?.toString() ?? map['created_at']?.toString() ?? map['date']?.toString() ?? '',
               'time': map['transaction_date'] != null ? map['transaction_date'].toString().split('T').last.substring(0, 5) : (map['time'] ?? '-'),
               'items': itemsSummary.isNotEmpty ? itemsSummary : 'Transaksi Penjualan',
               'method': method,
@@ -483,13 +510,34 @@ class ApiService {
     return List<Map<String, dynamic>>.from(_fallbackTransactions);
   }
 
-  /// Catat transaksi baru ke backend Laravel
+  /// Catat transaksi baru ke backend Laravel (dengan validasi stok)
   static Future<bool> createTransaction({
     required List<dynamic> cartItems,
     required String itemsSummary,
     required String paymentMethod,
     required int totalAmount,
   }) async {
+    // Validasi stok lokal sebelum memproses transaksi
+    for (final item in cartItems) {
+      final String name = (item.runtimeType.toString() == 'CartItem')
+          ? (item as dynamic).name
+          : (item['name'] as String? ?? '');
+      final int qty = (item.runtimeType.toString() == 'CartItem')
+          ? (item as dynamic).qty
+          : ((item['qty'] as int?) ?? 1);
+      final idx = _fallbackProducts.indexWhere(
+        (p) => (p['name'] as String).toLowerCase() == name.toLowerCase(),
+      );
+      if (idx != -1) {
+        final availableStock = (_fallbackProducts[idx]['stock'] as int?) ?? 0;
+        if (qty > availableStock) {
+          lastErrorNotifier.value =
+              'Stok $name tidak mencukupi (tersisa $availableStock, diminta $qty).';
+          return false;
+        }
+      }
+    }
+
     // Normalisasi method untuk backend Laravel ('cash', 'qris', 'transfer', 'other')
     String backendMethod = 'cash';
     final lower = paymentMethod.toLowerCase();
@@ -514,12 +562,14 @@ class ApiService {
 
         if (item.runtimeType.toString() == 'CartItem') {
           qty = (item as dynamic).qty;
-          // Cek apakah produk ada di _fallbackProducts untuk ambil ID asli
-          final match = _fallbackProducts.firstWhere(
-            (p) => (p['name'] as String).toLowerCase() == (item as dynamic).name.toLowerCase(),
-            orElse: () => {},
-          );
-          pId = match['id'];
+          pId = (item as dynamic).productId;
+          if (pId == null) {
+            final match = _fallbackProducts.firstWhere(
+              (p) => (p['name'] as String).toLowerCase() == (item as dynamic).name.toLowerCase(),
+              orElse: () => {},
+            );
+            pId = match['id'];
+          }
         } else if (item is Map) {
           qty = (item['qty'] as int?) ?? 1;
           pId = item['product_id'] ?? item['id'];
@@ -552,6 +602,31 @@ class ApiService {
 
       if (res.statusCode == 200 || res.statusCode == 201) {
         isConnectedNotifier.value = true;
+        try {
+          final created = jsonDecode(res.body);
+          final txId = created is Map ? (created['id'] ?? created['data']?['id']) : null;
+          if (txId != null) {
+            final confirmUri = backendMethod == 'cash'
+                ? Uri.parse(ApiConfig.payCashUrl(txId))
+                : Uri.parse('${ApiConfig.transactionsUrl}/$txId/confirm');
+            final confirmRes = await http
+                .post(
+                  confirmUri,
+                  headers: ApiConfig.defaultHeaders,
+                  body: jsonEncode({'paid_amount': totalAmount, 'payment_method': backendMethod}),
+                )
+                .timeout(const Duration(seconds: 5));
+            if (confirmRes.statusCode == 422) {
+              final errBody = jsonDecode(confirmRes.body);
+              lastErrorNotifier.value = errBody['message']?.toString() ?? 'Stok di server tidak mencukupi.';
+              return false;
+            }
+          }
+        } catch (_) {}
+      } else if (res.statusCode == 422) {
+        final errBody = jsonDecode(res.body);
+        lastErrorNotifier.value = errBody['message']?.toString() ?? 'Validasi transaksi gagal.';
+        return false;
       }
     } catch (_) {
       isConnectedNotifier.value = false;
@@ -777,5 +852,62 @@ class ApiService {
       'top_products': <dynamic>[],
       'today': <String, dynamic>{},
     };
+  }
+
+  /// Buat data export CSV untuk fitur Cadangkan Data (P0):
+  /// ID Transaksi, Waktu Transaksi, Jenis Pembayaran, Harga Satuan Produk (IDR), Total Transaksi (IDR).
+  static String buildTransactionsExportCsv(List<Map<String, dynamic>> transactions) {
+    String csvEscape(dynamic val) {
+      final s = (val ?? '').toString().replaceAll('"', '""');
+      return '"$s"';
+    }
+
+    final buffer = StringBuffer();
+    buffer.writeln(
+      'id_transaksi,waktu_transaksi,jenis_pembayaran,nama_produk,qty,harga_satuan_idr,total_transaksi_idr',
+    );
+
+    for (final trx in transactions) {
+      final id = trx['id'] ?? '-';
+      final datePart = trx['date']?.toString() ?? '';
+      final timePart = trx['time']?.toString() ?? '-';
+      final waktu = datePart.isNotEmpty
+          ? (datePart.contains('T') || datePart.contains(' ') ? datePart : '$datePart $timePart')
+          : timePart;
+      final method = trx['method'] ?? '-';
+      final totalIdr = trx['amount'] ?? 0;
+      final items = trx['cartItems'] as List? ?? [];
+
+      if (items.isEmpty) {
+        buffer.writeln([
+          csvEscape(id),
+          csvEscape(waktu),
+          csvEscape(method),
+          csvEscape(trx['items'] ?? '-'),
+          1,
+          totalIdr,
+          totalIdr,
+        ].join(','));
+      } else {
+        for (final item in items) {
+          if (item is Map) {
+            final pName = item['product']?['name'] ?? item['name'] ?? 'Item';
+            final qty = item['quantity'] ?? item['qty'] ?? 1;
+            final unitPrice = item['unit_price'] ?? item['price'] ?? item['product']?['selling_price'] ?? 0;
+            buffer.writeln([
+              csvEscape(id),
+              csvEscape(waktu),
+              csvEscape(method),
+              csvEscape(pName),
+              qty,
+              unitPrice,
+              totalIdr,
+            ].join(','));
+          }
+        }
+      }
+    }
+
+    return buffer.toString();
   }
 }

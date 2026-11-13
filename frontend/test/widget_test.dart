@@ -9,6 +9,7 @@ void main() {
     // Gunakan penyimpanan in-memory agar test tidak menyentuh platform channel asli
     SharedPreferences.setMockInitialValues({});
     ApiService.resetAllData();
+    ApiService.authStateNotifier.value = true;
   });
 
   testWidgets('App renders MobileShell with bottom navigation and navigates to Produk',

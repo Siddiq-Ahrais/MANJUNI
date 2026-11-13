@@ -86,5 +86,35 @@ void main() {
     expect(find.text('Subtotal (0 item)'), findsOneWidget);
     expect(find.text('Keranjang Kosong (Rp0)'), findsOneWidget);
   });
+
+  testWidgets('P0 Stock validation prevents buying more than available stock',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: KeranjangPage(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Add item with maxStock = 2
+    final added1 = CartService.addItem('Minyak Goreng 1L', 18000, 'pcs', maxStock: 2);
+    expect(added1, isTrue);
+    await tester.pumpAndSettle();
+
+    // Increment to 2 (allowed, reaches maxStock = 2)
+    await tester.tap(find.byIcon(Icons.add));
+    await tester.pumpAndSettle();
+    expect(CartService.totalCount, 2);
+
+    // Attempt to increment past maxStock = 2 -> blocked!
+    await tester.tap(find.byIcon(Icons.add));
+    await tester.pumpAndSettle();
+    expect(CartService.totalCount, 2);
+    expect(find.textContaining('mencapai batas stok'), findsOneWidget);
+
+    // Attempt to add when stock is 0 -> blocked!
+    final addedZero = CartService.addItem('Gula Habis', 15000, 'pcs', maxStock: 0);
+    expect(addedZero, isFalse);
+  });
 }
 

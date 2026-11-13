@@ -86,6 +86,32 @@ class _KeranjangPageState extends State<KeranjangPage> {
 
     setState(() => _isProcessing = true);
 
+    // Validasi stok terbaru sebelum checkout
+    final latestProducts = await ApiService.getProducts();
+    for (final item in cartItems) {
+      final match = latestProducts.firstWhere(
+        (p) => (p['name'] as String? ?? '').toLowerCase() == item.name.toLowerCase(),
+        orElse: () => <String, dynamic>{},
+      );
+      if (match.isNotEmpty) {
+        final availableStock = (match['stock'] as int?) ?? 0;
+        if (item.qty > availableStock) {
+          if (!mounted) return;
+          setState(() => _isProcessing = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Stok ${item.name} tidak mencukupi (tersisa $availableStock, di keranjang ${item.qty}).',
+              ),
+              backgroundColor: Colors.redAccent,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+          return;
+        }
+      }
+    }
+
     final summary = cartItems.map((i) => '${i.name} (${i.qty}x)').join(', ');
     final method = _paymentMethods[_selectedPayment];
     final total = CartService.subtotal;
@@ -99,6 +125,20 @@ class _KeranjangPageState extends State<KeranjangPage> {
 
     if (!mounted) return;
     setState(() => _isProcessing = false);
+
+    if (!success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            ApiService.lastErrorNotifier.value ??
+                'Transaksi gagal. Periksa stok produk atau koneksi server.',
+          ),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
 
     if (success) {
       final isOnline = ApiService.isConnectedNotifier.value == true;
@@ -510,7 +550,22 @@ class _KeranjangPageState extends State<KeranjangPage> {
               const SizedBox(width: 14),
               // Plus Button
               GestureDetector(
-                onTap: () => CartService.updateQty(idx, 1),
+                onTap: () {
+                  final updated = CartService.updateQty(idx, 1);
+                  if (!updated) {
+                    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'Jumlah ${item.name} mencapai batas stok (${item.maxStock ?? item.qty})!',
+                        ),
+                        backgroundColor: Colors.redAccent,
+                        behavior: SnackBarBehavior.floating,
+                        duration: const Duration(milliseconds: 1400),
+                      ),
+                    );
+                  }
+                },
                 child: Container(
                   width: 34,
                   height: 34,

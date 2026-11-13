@@ -815,17 +815,24 @@ class _ProdukPageState extends State<ProdukPage> {
                           product: item,
                           formatRp: _formatRp,
                           onAdd: () {
-                            CartService.addItem(
+                            final int stock = (item['stock'] as int?) ?? 0;
+                            final added = CartService.addItem(
                               item['name'] as String,
                               (item['price'] as int?) ?? 0,
                               (item['unit'] as String?) ?? 'kemasan',
+                              maxStock: stock,
+                              productId: item['id'],
                             );
                             ScaffoldMessenger.of(context).hideCurrentSnackBar();
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text('${item['name']} ditambahkan ke keranjang!'),
-                                backgroundColor: kGreen,
-                                duration: const Duration(milliseconds: 1200),
+                                content: Text(
+                                  added
+                                      ? '${item['name']} ditambahkan ke keranjang!'
+                                      : 'Stok ${item['name']} tidak mencukupi (stok: $stock)!',
+                                ),
+                                backgroundColor: added ? kGreen : Colors.redAccent,
+                                duration: const Duration(milliseconds: 1400),
                                 behavior: SnackBarBehavior.floating,
                               ),
                             );

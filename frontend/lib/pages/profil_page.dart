@@ -1,4 +1,8 @@
+import 'dart:io' show Directory, File;
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../services/api_config.dart';
 import '../services/api_service.dart';
 import '../services/cart_service.dart';
@@ -15,7 +19,7 @@ class _ProfilPageState extends State<ProfilPage> {
   bool _isOfflineMode = true;
   bool _isSyncing = false;
   int _productCount = 0;
-  int _customerCount = 0;
+  int _transactionCount = 0;
   String _lastSyncText = 'Belum ada sinkronisasi';
 
   @override
@@ -39,27 +43,123 @@ class _ProfilPageState extends State<ProfilPage> {
   Future<void> _loadStats() async {
     final products = await ApiService.getProducts();
     final transactions = await ApiService.getTransactions();
-    final customers = await ApiService.getCustomers();
-
-    final Set<String> uniqueCustomers = {};
-    for (final c in customers) {
-      final name = c['name']?.toString().trim();
-      if (name != null && name.isNotEmpty) {
-        uniqueCustomers.add(name);
-      }
-    }
-    for (final t in transactions) {
-      final c = t['customer']?.toString().trim();
-      if (c != null && c.isNotEmpty && c.toLowerCase() != 'pelanggan umum') {
-        uniqueCustomers.add(c);
-      }
-    }
 
     if (!mounted) return;
     setState(() {
       _productCount = products.length;
-      _customerCount = uniqueCustomers.length;
+      _transactionCount = transactions.length;
     });
+  }
+
+  Future<void> _showExportTransactionsDialog() async {
+    final transactions = await ApiService.getTransactions();
+    final csvData = ApiService.buildTransactionsExportCsv(transactions);
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Row(
+          children: [
+            Icon(Icons.download_rounded, color: kGreen),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Cadangkan Data Transaksi',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Total ${transactions.length} transaksi siap diekspor (ID, Waktu, Jenis Pembayaran, Harga Satuan Produk, Total IDR).',
+                style: const TextStyle(fontSize: 12.5, color: Color(0xFF4B5563)),
+              ),
+              const SizedBox(height: 10),
+              Container(
+                constraints: const BoxConstraints(maxHeight: 180),
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF3F4F6),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFE5E7EB)),
+                ),
+                child: SingleChildScrollView(
+                  child: SelectableText(
+                    csvData,
+                    style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Tutup', style: TextStyle(color: Colors.grey)),
+          ),
+          OutlinedButton.icon(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: csvData));
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Data CSV transaksi berhasil disalin ke clipboard!'),
+                  backgroundColor: kGreen,
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            },
+            icon: const Icon(Icons.copy_rounded, size: 16),
+            label: const Text('Salin CSV'),
+          ),
+          if (!kIsWeb)
+            ElevatedButton.icon(
+              onPressed: () async {
+                try {
+                  final ts = DateTime.now().millisecondsSinceEpoch;
+                  final file = File('${Directory.systemTemp.path}/manjuni_transaksi_$ts.csv');
+                  await file.writeAsString(csvData);
+                  if (!ctx.mounted) return;
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Backup CSV tersimpan di: ${file.path}'),
+                      backgroundColor: kGreen,
+                      behavior: SnackBarBehavior.floating,
+                      duration: const Duration(seconds: 3),
+                    ),
+                  );
+                } catch (e) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Gagal menyimpan file: $e'),
+                      backgroundColor: Colors.redAccent,
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: kGreen,
+                foregroundColor: Colors.white,
+              ),
+              icon: const Icon(Icons.save_alt_rounded, size: 16),
+              label: const Text('Simpan CSV'),
+            ),
+        ],
+      ),
+    );
   }
 
   Future<void> _checkStatus({bool silent = false}) async {
@@ -458,7 +558,7 @@ class _ProfilPageState extends State<ProfilPage> {
                 ),
                 const SizedBox(width: 12),
 
-                // Pelanggan (Lavender/Blue)
+                // Total Transaksi (Lavender/Blue)
                 Expanded(
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
@@ -470,7 +570,7 @@ class _ProfilPageState extends State<ProfilPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          'Pelanggan',
+                          'Total Transaksi',
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
@@ -484,7 +584,7 @@ class _ProfilPageState extends State<ProfilPage> {
                           fit: BoxFit.scaleDown,
                           alignment: Alignment.centerLeft,
                           child: Text(
-                            '$_customerCount Orang',
+                            '$_transactionCount',
                             style: const TextStyle(
                               fontSize: 24,
                               fontWeight: FontWeight.bold,
@@ -652,27 +752,11 @@ class _ProfilPageState extends State<ProfilPage> {
               child: Column(
                 children: [
                   _MenuRowItem(
-                    icon: Icons.storefront_outlined,
+                    icon: Icons.upload_outlined,
                     iconBg: const Color(0xFFD1F2D9),
                     iconColor: const Color(0xFF1E874B),
-                    title: 'Info Toko',
-                    onTap: _showServerDialog,
-                  ),
-                  const Divider(height: 1, indent: 64, color: Color(0xFFF0F0F0)),
-                  _MenuRowItem(
-                    icon: Icons.people_outline_rounded,
-                    iconBg: const Color(0xFFD9E6FF),
-                    iconColor: const Color(0xFF2563EB),
-                    title: 'Pelanggan',
-                    onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Menu Pelanggan dibuka ($_customerCount Orang terdaftar)'),
-                          behavior: SnackBarBehavior.floating,
-                          duration: const Duration(seconds: 1),
-                        ),
-                      );
-                    },
+                    title: 'Cadangkan Data',
+                    onTap: _showExportTransactionsDialog,
                   ),
                 ],
               ),
