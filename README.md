@@ -1,190 +1,367 @@
 # MANJUNI – Manajemen UMKM Terkini
 
-**MANJUNI** adalah aplikasi kasir (*Point of Sale*), pengelolaan inventori produk, perhitungan HPP &amp; laba rugi, serta pencatatan transaksi UMKM berbasis **Flutter** yang dirancang untuk berjalan **100% offline langsung di perangkat pengguna**.
-
-Seluruh fitur utama—mulai dari manajemen katalog &amp; stok produk, transaksi kasir, analitik penjualan, penguncian keamanan PIN, hingga ekspor laporan CSV—beroperasi sepenuhnya secara lokal **tanpa koneksi internet, tanpa bergantung pada server online, bebas iklan, dan tanpa paywall**.
+**MANJUNI** adalah aplikasi kasir (*Point of Sale*), pengelolaan inventori produk, kalkulasi HPP & laba rugi, serta pencatatan transaksi UMKM berbasis **Flutter** yang beroperasi **100% secara offline langsung di perangkat pengguna**.
 
 ---
 
-## Identitas Kompetisi &amp; Karya
+## 1. Pengenalan Projek
 
+### Gambaran Solusi
+**MANJUNI (Manajemen UMKM Terkini)** menghadirkan solusi operasional toko dan pencatatan keuangan UMKM dalam satu aplikasi mobile yang ringkas, cepat, **bebas iklan, tanpa paywall/langganan**, dan **100% offline**. Seluruh proses—mulai dari pencatatan produk & HPP, pemantauan stok real-time, transaksi kasir (`Tunai`, `QRIS`, `Kasbon`), dasbor analitik laba rugi, pengamanan PIN lokal berbasis PBKDF2, hingga cadangan laporan CSV ke folder `Download`—dieksekusi sepenuhnya di perangkat tanpa memerlukan koneksi internet maupun server eksternal.
 
-| Atribut                       | Keterangan                                                         |
-| :----------------------------- | :------------------------------------------------------------------ |
-| **Kategori Kompetisi**        | Local MSME &amp; Creative Economy                                  |
-| **Judul Karya**               | MANJUNI – Manajemen UMKM Terkini                                   |
-| **Institusi / Universitas**   | Universitas Indraprasta PGRI | Universitas Bina Sarana Informatika |
-| **Fakultas / Departemen**     | Teknik Informatika | Teknik Informasi                              |
-| **Nama Tim**                  | Bebas Kata Ferdi                                                   |
-| **Ketua Tim / Penulis Utama** | Ahmad Raisul Siddiq                                                |
+### Latar Belakang
+Pengembangan MANJUNI berangkat dari permasalahan nyata yang dialami pelaku UMKM sehari-hari:
+1. **Hambatan biaya & iklan pada aplikasi kasir yang ada**: Banyak aplikasi manajemen bisnis membatasi fitur penting di balik skema berbayar atau menampilkan iklan yang mengganggu kelancaran operasional toko.
+2. **Kebutuhan pencatatan bisnis yang praktis**: Pelaku UMKM membutuhkan alat bantu yang sederhana namun mampu mencatat transaksi harian, menghitung Harga Pokok Penjualan (HPP) termasuk ongkos kirim, serta menampilkan perkiraan markup, margin, dan laba secara langsung.
+3. **Risiko selisih stok akibat pencatatan manual**: Pencatatan stok secara manual lambat dan rentan membuat catatan berbeda dengan stok fisik. MANJUNI menyinkronkan sisa stok secara real-time saat barang masuk keranjang hingga checkout serta memberi indikator peringatan dini saat stok menipis (`< 50%` stok awal).
+4. **Keterbatasan konektivitas di lapangan**: Tidak semua lokasi usaha UMKM memiliki akses internet yang stabil. Oleh karena itu, versi rilis final MANJUNI dikunci pada **mode 100% offline** agar usaha tetap berjalan lancar tanpa ketergantungan jaringan maupun biaya server.
 
-
----
-
-## Anggota Tim &amp; Jobdesk
-
-
-| No. &amp; Peran                                                     | Nama Lengkap            | Nomor Induk Mahasiswa (NIM) |
-| :------------------------------------------------------------------- | :----------------------- | :--------------------------- |
-| Anggota 1 – Project Manager, Backend Dev, QA Engineer, Frontend Dev | **Ahmad Raisul Siddiq** | `202443500970`              |
-| Anggota 2 – UI/UX, QA Engineer                                      | **Azka Ezzikra**        | `202543500865`              |
-| Anggota 3 – Frontend Dev, UI/UX, QA Engineer                        | **Muhamad Ferdi**       | `17231160`                  |
-| Anggota 4 – Frontend Dev, Backend Dev, QA Engineer                  | **Ahmad Zani Syechkar** | `202443502077`              |
-
-
-### Rincian Pembagian Jobdesk
-
-- **Ahmad Raisul Siddiq** (*Project Manager, Backend Dev, QA Engineer, Frontend Dev*)
-  - Mengoordinasikan perencanaan fitur, prioritas pengembangan, manajemen rilis, dan alur kerja tim hingga versi rilis stabil.
-  - Merancang serta mengembangkan layanan logika bisnis lokal/offline (`ApiService`, `SecurityCrypto`), mekanisme penyimpanan persisten (`SharedPreferences`), serta berkontribusi pada implementasi antarmuka Frontend dan pengujian kualitas (QA).
-- **Azka Ezzikra** (*UI/UX, QA Engineer*)
-  - Merancang pengalaman pengguna (*user experience*) dan tata letak antarmuka (*user interface*) agar ramah bagi pelaku UMKM.
-  - Melakukan pengujian QA fungsional, validasi alur penggunaan tiap halaman, serta verifikasi konsistensi tampilan dan interaksi aplikasi.
-- **Muhamad Ferdi** (*Frontend Dev, UI/UX, QA Engineer*)
-  - Mengimplementasikan komponen antarmuka Flutter (navigasi tab, form produk, keranjang, transaksi, dashboard/analytics, serta penyelarasan UI/UX) agar responsif dan mudah dioperasikan.
-  - Melakukan penyempurnaan visual UI/UX serta pengujian QA pada alur tampilan dan interaksi pengguna.
-- **Ahmad Zani Syechkar** (*Frontend Dev, Backend Dev, QA Engineer*)
-  - Mengembangkan fitur Frontend Flutter sekaligus layanan logika/penyimpanan data aplikasi dan integrasi native perangkat (`MethodChannel` Android/file export).
-  - Melaksanakan pengujian QA (termasuk pengujian widget, alur bisnis, dan keamanan aplikasi).
+### Target Pengguna
+- **Pengguna Utama (*Primary User*)**: Pemilik UMKM dan pelaku usaha mandiri (warung kelontong, toko sembako, usaha makanan & minuman, penjualan *snack*, bumbu dapur, kebutuhan rumah tangga, hingga pelaku ekonomi kreatif lokal).
+- **Pengguna Pendukung (*Secondary User*)**: Kasir atau staf operasional toko yang mencatat transaksi harian, memantau sisa stok produk, dan melakukan pencadangan data penjualan ke CSV.
 
 ---
 
-## Arsitektur 100% Offline
+## 2. Identitas Kompetisi, Karya & Tim
 
-Aplikasi MANJUNI dibangun dengan prinsip **100% Offline / Local-First** tanpa komunikasi jaringan ke server eksternal:
+| Atribut | Keterangan |
+| :--- | :--- |
+| **Kategori Kompetisi** | Local MSME & Creative Economy |
+| **Judul Karya** | MANJUNI – Manajemen UMKM Terkini |
+| **Institusi / Universitas** | Universitas Indraprasta PGRI \| Universitas Bina Sarana Informatika |
+| **Fakultas / Departemen** | Teknik Informatika \| Teknik Informasi |
+| **Nama Tim** | Bebas Kata Ferdi |
+| **Ketua Tim / Penulis Utama** | Ahmad Raisul Siddiq |
+| **Informasi Kontak** | 089628836281 / raisulsiddiq1009@gmail.com |
 
-- **Mode Offline Terkunci (`ApiService`)**: `ApiService.offlineModeNotifier` selalu bernilai `true` dan `isConnectedNotifier` bernilai `false`, sehingga seluruh operasi baca/tulis produk, keranjang, transaksi, profil toko, dan keamanan berjalan murni di perangkat.
-- **Tanpa Izin Internet di Android (`AndroidManifest.xml`)**: Aplikasi Android (`com.example.majunih`) **tidak mendeklarasikan `android.permission.INTERNET`**, serta menetapkan `android:allowBackup="false"` dan `android:usesCleartextTraffic="false"`.
-- **Penyimpanan Lokal Persisten (`SharedPreferences` `_v2`)**:
-  - Menggunakan skema key bersih berakhiran `_v2` (`mj_products_v2`, `mj_transactions_v2`, `mj_customers_v2`, `mj_users_v2`, `mj_deleted_products_v2`, `mj_cart_v2`) dan otomatis membersihkan key legacy `_v1` saat inisialisasi `loadLocalData()`.
-  - Menyimpan identitas toko (`store_name`, `store_category`) serta status keamanan PIN, nama keamanan, dan status rate-limiting (`mj_security_*_v2`, `mj_pin_*_v2`, `mj_recovery_*_v2`).
-- **Akses File Perangkat Secara Lokal (`MethodChannel`)**:
-  - Menggunakan `MethodChannel('com.example.majunih/file_export')` pada `MainActivity.kt` (Android) dan `OpenFileDialog` (Windows) untuk memilih foto produk langsung dari perangkat serta menyimpan file ekspor CSV langsung ke folder `Download` perangkat tanpa layanan cloud.
-- **Catatan Direktori `backend/`**: Folder [`backend/`](./backend) di repositori merupakan arsip prototipe awal berbasis Laravel dari tahap perencanaan terdahulu dan **tidak digunakan** oleh aplikasi aktif MANJUNI di [`frontend/`](./frontend) yang berjalan 100% offline.
+### Anggota Tim & Jobdesk
 
----
+| No. & Peran | Nama Lengkap | Nomor Induk Mahasiswa (NIM) |
+| :--- | :--- | :--- |
+| Anggota 1 – Project Manager, Backend Dev, QA Engineer, Frontend Dev | **Ahmad Raisul Siddiq** | `202443500970` |
+| Anggota 2 – UI/UX, QA Engineer | **Azka Ezzikra** | `202543500865` |
+| Anggota 3 – Frontend Dev, UI/UX, QA Engineer | **Muhamad Ferdi** | `17231160` |
+| Anggota 4 – Frontend Dev, Backend Dev, QA Engineer | **Ahmad Zani Syechkar** | `202443502077` |
 
-## Fitur Utama &amp; Update Terakhir
-
-### 1. Akses Masuk &amp; Keamanan Lokal (`LoginPage`, `AuthGate`, `SecurityCrypto`)
-
-- **Masuk Tanpa Akun Online**: Tidak menggunakan login email/password server. Jika PIN tidak diaktifkan, pengguna cukup menekan tombol **Masuk ke Aplikasi** untuk langsung menggunakan aplikasi. Jika PIN aktif, aplikasi menampilkan gerbang verifikasi PIN beserta opsi **Lupa Password? Buka dengan Nama Keamanan**.
-- **Kriptografi Lokal Pure-Dart (`SecurityCrypto`)**:
-  - Hashing PIN dan 2 Nama Keamanan memakai **PBKDF2-HMAC-SHA256** (`5.000` iterasi, salt acak 16-byte dari `Random.secure()`, digest 32-byte, format `pbkdf2_sha256$<iter>$<salt_hex>$<hash_hex>`) dengan perbandingan *constant-time*.
-  - Kredensial plaintext lama otomatis dimigrasikan ke hash PBKDF2 saat aplikasi memuat data awal.
-- **Rate Limiting &amp; Cooldown Persisten**: Maksimal `5` kali percobaan salah pada verifikasi PIN maupun pemulihan Nama Keamanan akan mengaktifkan masa tunggu `30 detik` yang tetap bertahan meski aplikasi ditutup dan dibuka kembali.
-- **Auto-Lock Otomatis (`AuthGate`)**: Aplikasi otomatis mengunci kembali (`ApiService.lockApp()`) ketika berpindah ke latar belakang (`AppLifecycleState.paused`) saat PIN aktif, dengan pengecualian aman agar tidak terkunci saat pengguna sedang memilih foto/file eksternal (`isPickingExternalFile`).
-- **Manajemen PIN &amp; Nama Keamanan di Profil**:
-  - **Atur PIN Keamanan**: Opsional, minimal `4` digit angka disertai `2` Nama Keamanan alfanumerik (huruf &amp; angka) sebagai kunci pemulihan, lengkap dengan banner peringatan bahwa PIN tidak dapat dilihat/di-recovery kembali selain melalui kedua Nama Keamanan.
-  - **Ganti PIN &amp; Nonaktifkan PIN**: Membutuhkan verifikasi PIN lama serta kedua Nama Keamanan.
-  - **Ganti Nama Keamanan**: Wajib mengganti kedua Nama Keamanan secara serentak dengan memverifikasi PIN saat ini serta **1 karakter terakhir** dari masing-masing Nama Keamanan 1 dan Nama Keamanan 2 saat ini.
-- **Konfirmasi PIN pada Aksi Destruktif (`confirmSecurityPinForAction`)**: Melindungi aksi **Reset** riwayat transaksi di halaman Transaksi dan **Kosongkan Data Aplikasi** di halaman Profil saat PIN keamanan aktif.
-
-### 2. Dashboard Overview &amp; Analytics (`DashboardPage`, `AnalyticsView`)
-
-- **Navigasi 5 Tab Utama (`MobileShell`)**: `Overview`, `Produk`, `Keranjang` (dilengkapi badge jumlah item real-time dari `CartService.totalCount`), `Transaksi`, dan `Profil`.
-- **Toggle In-Place `Overview` / `Analytics`**: Berpindah antara ringkasan cepat dan analitik mendalam dalam tab yang sama, serta mengetuk kartu header toko untuk langsung membuka tab `Profil`.
-- **Mode `Overview`**:
-  - Filter rentang waktu `Today`, `This week`, `This month`, dan `All time`.
-  - Kartu ringkasan `Total orders` dan `Total revenue` (`Rp`).
-  - Daftar peringkat **Top Seller (Produk Terlaris)** dengan badge `#1 Top Seller` dan pintasan `View all` menuju tampilan `Analytics`.
-  - Daftar **Recent activity** dengan pintasan `View all` menuju tab `Transaksi`.
-- **Mode `Analytics` (`AnalyticsView`)**:
-  - 4 kartu ringkasan: `Penjualan`, `Pembelian`, `Laba Bersih`, dan `Transaksi`.
-  - Grafik perbandingan **Penjualan vs Pembelian** (`_CompareBarPainter`) yang menampilkan rincian `HPP`, `Laba Kotor`, `Margin Kotor (%)`, dan `Markup (vs HPP) (%)`.
-  - Grafik tren jumlah produk terjual interaktif (`7 Hari`, `30 Hari`, `6 Bulan`) dengan label `<N> terjual` dan badge puncak `Terbanyak`.
-  - Rincian **Komposisi Pembelian** per kategori dan daftar **Produk Terlaris**.
-
-### 3. Manajemen Produk, Kalkulasi HPP &amp; Stok Real-Time (`ProdukPage`)
-
-- **Ringkasan Inventori Reaktif**: Menampilkan `Total Produk` dan `Stok Menipis` (`stock <= 0 || stock < initial_stock * 0.5`) yang langsung menghitung sisa stok efektif setelah dikurangi item di keranjang.
-- **Pencarian &amp; Filter Kategori**: Pencarian berdasarkan nama produk, jenis/kategori, atau barcode, serta 8 chip filter kategori (`Semua`, `Sembako`, `Makanan`, `Minuman`, `Snack`, `Bumbu Dapur`, `Kebutuhan Rumah`, `Lainnya`).
-- **Form Tambah &amp; Edit Produk Lengkap**:
-  - Pilihan kategori (`Sembako`, `Makanan`, `Minuman`, `Snack`, `Umum`, `Lainnya` dengan input kategori kustom).
-  - Pilihan satuan (`pcs`, `kg`, `liter`, `ml`, `gram`, `bungkus`, `botol`, `kemasan`) beserta **deteksi satuan otomatis** dari kolom `Berat / Ukuran` (contoh: mengetik `250ml` otomatis memilih satuan `ml`, `5kg` memilih `kg`, `500g` memilih `gram`, `2l` memilih `liter`).
-  - **Upload Foto Produk Lokal**: Mengambil foto dari penyimpanan perangkat (di Android melalui `MethodChannel` `pickImage` yang mengompres gambar hingga maksimal `600px` JPEG quality `82` menjadi base64 data URI; di Windows melalui dialog pemilih file native).
-  - **Kalkulasi HPP, Markup &amp; Margin Otomatis**: Memasukkan **Modal / Produk**, **Ongkir (Opsional)**, dan **Harga Jual \*** langsung menampilkan simulasi **HPP / Produk** (`baseCostPrice + (shippingCost / stockCount).round()`), **Untung/Rugi**, **Markup (vs HPP) (%)**, dan **Margin (vs Jual) (%)**.
-  - **Validasi Auto-Focus (`FocusNode`)**: Otomatis mengarahkan kursor dan menggulir ke kolom wajib yang belum terisi.
-- **Proteksi Stok Real-Time**: Menekan `Tambah` langsung menyesuaikan sisa stok terhadap `CartService`; jika sisa stok mencapai `0`, tombol berubah menjadi `Habis` agar tidak terjadi penjualan melebihi stok.
-
-### 4. Keranjang &amp; Kasir POS (`KeranjangPage`, `CartService`, `QrisPaymentDialog`)
-
-- Header nama toko yang tersinkronisasi reaktif dengan Profil Toko.
-- Tampilan item keranjang lengkap dengan thumbnail foto produk dan kontrol kuantitas dengan penjagaan batas stok ketat.
-- Pemilihan **Metode Pencatatan**: `Tunai`, `QRIS` (mendukung modal tampilan QRIS via `QrisPaymentDialog`), dan `Kasbon`.
-- Ringkasan pembayaran bersih tanpa baris diskon serta penyimpanan transaksi (`Simpan`) yang langsung memperbarui stok produk dan riwayat transaksi secara lokal.
-
-### 5. Riwayat Transaksi (`TransaksiPage`)
-
-- Ringkasan `Omzet Hari Ini` dan `Jumlah Transaksi` dengan header nama toko yang tersinkronisasi reaktif.
-- Pencarian transaksi berdasarkan ID invoice, nama pelanggan, metode pencatatan, maupun nama produk di dalam transaksi.
-- Kartu riwayat transaksi lengkap dengan modal detail rincian item (`cartItems`) yang dibeli.
-- Tombol **Reset** riwayat transaksi yang dilindungi konfirmasi PIN keamanan saat PIN aktif.
-
-### 6. Profil Toko &amp; Cadangkan Data CSV (`ProfilPage`, `MainActivity.kt`)
-
-- **Identitas &amp; Sinkronisasi Toko Reaktif**: Ubah Nama Toko (`store_name`) dan Kategori Toko (`store_category`) yang langsung diperbarui secara reaktif di `KeranjangPage`, `TransaksiPage`, `FullSidebar`, dan `QrisPaymentDialog`, disertai ringkasan `Produk Terdaftar` dan `Total Transaksi`.
-- **Cadangkan Data Transaksi (CSV Offline)**:
-  - Pilihan filter rentang waktu: `Semua`, `Perminggu` (7 hari terakhir), `Bulan`, dan `Tahun`.
-  - Format ramah Microsoft Excel (`sep=,` dengan akhir baris CRLF `\r\n`) dan kolom `id_transaksi,waktu_transaksi,jenis_pembayaran,nama_produk,qty,harga_satuan_idr,total_transaksi_idr`.
-  - **Sanitasi CSV Formula Injection**: Nilai teks yang diawali karakter formula berbahaya (`=`, `+`, `-`, `@`, `\t`, `\r`, termasuk setelah spasi awal) otomatis diawali tanda `'` agar aman saat dibuka di aplikasi spreadsheet.
-  - Mendukung **Salin CSV** ke clipboard serta **Simpan CSV** langsung ke folder `Download` perangkat (`MediaStore` untuk Android Q+ / penyimpanan Download publik untuk Android di bawah Q, maupun folder `Downloads` di desktop).
-- **Kosongkan Data Aplikasi**: Menghapus seluruh data lokal hingga kembali seperti baru pertama kali dipakai (dilindungi verifikasi PIN jika aktif).
+#### Rincian Pembagian Jobdesk
+- **Ahmad Raisul Siddiq** (*Project Manager, Backend Dev, QA Engineer, Frontend Dev*): Mengoordinasikan perencanaan fitur, prioritas pengembangan, dan rilis versi stabil; merancang serta mengembangkan logika layanan lokal/offline (`ApiService`, `SecurityCrypto`), penyimpanan persisten (`SharedPreferences`), serta berkontribusi pada antarmuka Frontend dan pengujian QA.
+- **Azka Ezzikra** (*UI/UX, QA Engineer*): Merancang tata letak antarmuka dan pengalaman pengguna agar intuitif bagi pelaku UMKM, serta melakukan pengujian QA fungsional dan verifikasi konsistensi alur antarhalaman.
+- **Muhamad Ferdi** (*Frontend Dev, UI/UX, QA Engineer*): Mengimplementasikan tampilan dan komponen interaktif Flutter (navigasi 5 tab, form produk, keranjang, transaksi, dashboard/analytics), menyempurnakan aspek visual UI/UX, serta menjalankan pengujian QA.
+- **Ahmad Zani Syechkar** (*Frontend Dev, Backend Dev, QA Engineer*): Mengembangkan fitur Frontend Flutter, layanan logika/penyimpanan data aplikasi beserta integrasi native perangkat (`MethodChannel` Android/file export), serta melakukan pengujian QA (unit, widget, dan keamanan).
 
 ---
 
-## Ringkasan Pembaruan Terakhir (Changelog)
+## 3. Technical Documentation (Arsitektur Sistem & Diagram Alur Program)
 
-Berdasarkan riwayat pembaruan terakhir hingga `2026-11-14`:
+### Arsitektur Sistem (100% Offline / Local-First)
+Aplikasi MANJUNI yang aktif berjalan di [`frontend/`](./frontend) dikunci penuh ke **mode 100% offline** tanpa koneksi ke server online:
+- **Zero Network Dependency**: `ApiService.offlineModeNotifier` dikunci ke `true` (`isConnectedNotifier` ke `false`), dan [`AndroidManifest.xml`](./frontend/android/app/src/main/AndroidManifest.xml) **tidak mendeklarasikan izin `android.permission.INTERNET`**, serta menetapkan `android:allowBackup="false"` dan `android:usesCleartextTraffic="false"`.
+- **Penyimpanan Lokal Terenkripsi/Tersusun (`_v2`)**: Seluruh data disimpan secara lokal melalui `SharedPreferences` dengan key clean-slate `_v2` (otomatis membersihkan key legacy `_v1` saat `loadLocalData()`), sedangkan kredensial PIN dan 2 Nama Keamanan di-hash menggunakan `PBKDF2-HMAC-SHA256` pada `SecurityCrypto`.
+- **Native Device Bridge (`MethodChannel`)**: Pertukaran file dengan penyimpanan perangkat (memilih foto produk dan menyimpan CSV ke folder `Download`) ditangani langsung secara lokal melalui `MethodChannel('com.example.majunih/file_export')` pada [`MainActivity.kt`](./frontend/android/app/src/main/kotlin/com/example/majunih/MainActivity.kt) untuk Android serta `OpenFileDialog` native untuk Windows.
 
-1. **`Security Update` (`457fef1`)**:
-   - Menambahkan kriptografi pure-Dart `SecurityCrypto` (SHA-256, HMAC-SHA256, PBKDF2-HMAC-SHA256 + salt acak 16-byte) serta migrasi otomatis kredensial lama.
-   - Menambahkan rate limiting (maksimal 5x salah -&gt; jeda 30 detik persisten), `AuthGate` auto-lock saat background, dialog konfirmasi PIN pada aksi destruktif (`Reset` transaksi &amp; `Kosongkan Data Aplikasi`), dan sanitasi CSV formula injection.
-   - Memperketat konfigurasi Android (`allowBackup="false"`, `usesCleartextTraffic="false"`, tanpa izin `INTERNET`, dukungan konfigurasi signing rilis opsional via `android/key.properties`).
-2. **`Bugfix2 Final Version` (`d6a1cc5`)**:
-   - Menyatukan sinkronisasi profil toko (`storeNameNotifier` &amp; `storeCategoryNotifier`) agar pembaruan nama dan kategori toko di `ProfilPage` langsung terefleksi di `KeranjangPage`, `TransaksiPage`, `FullSidebar`, dan `QrisPaymentDialog`.
-3. **`Stable bugfix Final version` (`5c06036`)**:
-   - Menyesuaikan penamaan aplikasi menjadi `MANJUNI`, menambahkan satuan `ml` lengkap dengan deteksi otomatis ukuran `ml`, memperjelas label `Modal / Produk` dan `HPP / Produk`, serta menghapus baris `Diskon` pada ringkasan `KeranjangPage`.
-4. **`Stable Version Final` (`dd6f081`)**:
-   - Mengunci aplikasi ke mode 100% offline dengan skema penyimpanan bersih `_v2`, menerapkan PIN + 2 Nama Keamanan alfanumerik (termasuk alur ganti 2 nama serentak dengan PIN &amp; karakter terakhir), kalkulasi `Ongkir` pada HPP, indikator `Markup` &amp; `Margin`, validasi *auto-focus* form produk, thumbnail foto di keranjang, dan logo aplikasi terbaru (`assets/images/app_logo.png`).
-5. **`Stable Version` (`3424289`)**:
-   - Menambahkan integrasi native `MainActivity.kt` (`MethodChannel com.example.majunih/file_export`) untuk ekspor CSV ke folder `Download` dan unggah foto produk lokal, pengurangan stok real-time di `ProdukPage` &amp; `KeranjangPage`, serta grafik tren produk terjual &amp; ranking `Top Seller` di `DashboardPage` / `AnalyticsView`.
+```mermaid
+flowchart TB
+    subgraph UI["Presentation Layer - Flutter UI (100% Offline)"]
+        A1["AuthGate & LoginPage"]
+        A2["MobileShell (5 Tab Navigasi)"]
+        A3["DashboardPage & AnalyticsView"]
+        A4["ProdukPage, KeranjangPage, TransaksiPage, ProfilPage"]
+        A5["Dialog & Widget (QrisPaymentDialog, pin_confirm_dialog)"]
+    end
+
+    subgraph SVC["Business Logic, State & Crypto Layer"]
+        B1["ApiService (Offline Lock & Store Profile Notifiers)"]
+        B2["CartService (Keranjang & Sinkronisasi Batas Stok)"]
+        B3["SecurityCrypto (SHA-256, HMAC-SHA256, PBKDF2 5000 iterasi)"]
+        B4["NavigationService"]
+    end
+
+    subgraph LOCAL["Local Persistence & Native Device Layer"]
+        C1["SharedPreferences (_v2 Clean-Slate Keys)"]
+        C2["MethodChannel 'com.example.majunih/file_export'"]
+        C3["Android MainActivity.kt (MediaStore / Downloads & Image Picker 600px JPEG)"]
+        C4["Windows OpenFileDialog & Local Downloads Folder"]
+    end
+
+    UI --> SVC
+    B1 --> C1
+    B2 --> C1
+    B1 --> B3
+    A4 --> C2
+    C2 --> C3
+    C2 --> C4
+```
+
+### Diagram Alur Program
+
+```mermaid
+flowchart TD
+    Start(["Buka Aplikasi MANJUNI"]) --> Init["main() -> ApiService.loadLocalData()<br/>Bersihkan key _v1, muat _v2, migrasi hash PBKDF2"]
+    Init --> Gate{"AuthGate: PIN Keamanan Aktif?"}
+
+    Gate -- "Tidak" --> FastIn["LoginPage: 1 Ketuk 'Masuk ke Aplikasi'"]
+    Gate -- "Ya" --> Unlock["LoginPage: Masukkan PIN atau<br/>'Lupa Password? Buka dengan Nama Keamanan'"]
+
+    Unlock --> RateCheck{"Salah >= 5x?"}
+    RateCheck -- "Ya" --> Cooldown["Lockout 30 Detik Persisten"] --> Unlock
+    RateCheck -- "Tidak, Valid" --> Shell
+
+    FastIn --> Shell["MobileShell (5 Tab Utama)<br/>Overview | Produk | Keranjang | Transaksi | Profil"]
+
+    Shell --> Tab1["Overview / Analytics<br/>Filter Periode, Top Seller, HPP, Margin/Markup & Tren"]
+    Shell --> Tab2["Produk<br/>CRUD Produk, Foto Lokal, HPP + Ongkir,<br/>Deteksi Satuan Otomatis, Stok Real-Time"]
+    Shell --> Tab3["Keranjang (POS)<br/>Cek Sisa Stok Ketat, Pilih Tunai / QRIS / Kasbon"]
+    Shell --> Tab4["Transaksi<br/>Riwayat, Detail Item & Reset Ber-PIN"]
+    Shell --> Tab5["Profil<br/>Edit Toko Reaktif, PIN & 2 Nama Keamanan,<br/>Ekspor CSV Download, Kosongkan Data Ber-PIN"]
+
+    Tab2 -- "Tambah ke Keranjang" --> Tab3
+    Tab3 -- "Simpan Transaksi" --> Deduct["Potong Stok Lokal & Catat ke mj_transactions_v2"] --> Tab4
+    Shell -. "App Paused (Background) & PIN Aktif" .-> Lock["Auto-Lock -> Kembali ke AuthGate"]
+```
 
 ---
 
-## Tech Stack &amp; Konfigurasi
+## 4. Frontend Documentation (Framework, Struktur Komponen UI & Aset)
 
-- **Framework**: Flutter &amp; Dart SDK `^3.13.7` (`frontend/pubspec.yaml`, package `majunih`, versi `1.0.0+1`)
-- **Paket Utama**:
-  - `shared_preferences: ^2.3.2` — penyimpanan data lokal 100% offline
-  - `qr_flutter: ^4.1.0` — rendering kode QR lokal pada modal pembayaran QRIS
-  - `cupertino_icons: ^1.0.8` — aset ikon tambahan
-  - `flutter_lints: ^6.0.0` — standar analisis statis Dart/Flutter
-  - *(Catatan: dependensi `http` masih tercantum pada `pubspec.yaml`, namun jalur komunikasi jaringan tidak aktif pada aplikasi 100% offline dan izin `INTERNET` tidak dideklarasikan pada manifest Android)*
-- **Android Native**: Kotlin + Android Gradle (`namespace` &amp; `applicationId`: `com.example.majunih`, `android:label="MANJUNI"`, Java/Kotlin 17, `MainActivity.kt`)
+### Framework & Dependensi Utama
+Dikonfigurasi pada [`frontend/pubspec.yaml`](./frontend/pubspec.yaml) (`name: majunih`, `version: 1.0.0+1`):
+- **Framework**: Flutter & Dart SDK `^3.13.7` (Material Design 3 dengan `ColorScheme.fromSeed(seedColor: Color(0xFF164E2E))`)
+- **Dependensi Aktif**:
+  - `shared_preferences: ^2.3.2` — penyimpanan persisten lokal 100% offline
+  - `qr_flutter: ^4.1.0` — rendering kode QR lokal pada modal QRIS
+  - `cupertino_icons: ^1.0.8` — koleksi ikon UI
+  - `flutter_lints: ^6.0.0` — standar lint dan analisis statis ([`analysis_options.yaml`](./frontend/analysis_options.yaml))
+  - *(Catatan: paket `http: ^1.6.0` masih tercantum di `pubspec.yaml` untuk kompatibilitas historis kelas layanan, namun aplikasi aktif berjalan 100% offline tanpa komunikasi server dan tanpa izin `INTERNET` pada Android manifest)*
+
+### Struktur Komponen UI (`frontend/lib/`)
+- **Entry Point & Keamanan Siklus Hidup**:
+  - [`main.dart`](./frontend/lib/main.dart) — memanggil `ApiService.loadLocalData()` lalu menjalankan `MyApp`.
+  - [`app.dart`](./frontend/lib/app.dart) — konfigurasi tema, pembatasan `textScaler` (`0.85..1.15`), dan `AuthGate` dengan `WidgetsBindingObserver` untuk *auto-lock* otomatis saat aplikasi masuk ke latar belakang (`AppLifecycleState.paused`, dikecualikan saat `isPickingExternalFile` aktif).
+- **Shell Navigasi**:
+  - [`mobile_shell.dart`](./frontend/lib/mobile_shell.dart) — `IndexedStack` 5 tab (`Overview`, `Produk`, `Keranjang`, `Transaksi`, `Profil`) dilengkapi badge merah real-time dari `CartService.totalCount`.
+  - [`shell.dart`](./frontend/lib/shell.dart) — shell alternatif berbasis drawer [`full_sidebar.dart`](./frontend/lib/widgets/full_sidebar.dart).
+- **Halaman Utama (`frontend/lib/pages/`)**:
+  - [`login_page.dart`](./frontend/lib/pages/login_page.dart) — gerbang masuk offline (1 ketuk bila tanpa PIN; verifikasi PIN & pemulihan 2 Nama Keamanan bila PIN aktif).
+  - [`dashboard_page.dart`](./frontend/lib/pages/dashboard_page.dart) — tab `Overview` dengan toggle *in-place* ke `AnalyticsView`, header toko klik-langsung ke Profil, filter `Today` / `This week` / `This month` / `All time`, **Top Seller**, dan **Recent activity**.
+  - [`analytics_page.dart`](./frontend/lib/pages/analytics_page.dart) — `AnalyticsView` berisi 4 kartu metrik (`Penjualan`, `Pembelian`, `Laba Bersih`, `Transaksi`), custom canvas painter `_CompareBarPainter` (`Penjualan vs Pembelian`, `HPP`, `Laba Kotor`, `Margin Kotor (%)`, `Markup (vs HPP) (%)`), grafik tren produk terjual interaktif (`7 Hari`, `30 Hari`, `6 Bulan` dengan badge `Terbanyak`), dan `Komposisi Pembelian`.
+  - [`produk_page.dart`](./frontend/lib/pages/produk_page.dart) — daftar & form CRUD produk, kalkulasi real-time `Modal / Produk`, `Ongkir`, `HPP / Produk`, `Markup`, `Margin`, deteksi otomatis satuan (`pcs`, `kg`, `liter`, `ml`, `gram`, `bungkus`, `botol`, `kemasan`), filter 8 chip kategori, pencarian nama/kategori/barcode, upload foto lokal, peringatan stok menipis `< 50%`, validasi *auto-focus* (`FocusNode`), dan pengurangan sisa stok real-time (`Tambah` -> `Habis`).
+  - [`keranjang_page.dart`](./frontend/lib/pages/keranjang_page.dart) — daftar keranjang dengan thumbnail foto produk, kontrol kuantitas ketat sesuai stok, header nama toko reaktif, pemilihan `Tunai` / `QRIS` / `Kasbon`, serta penyimpanan checkout langsung tanpa baris diskon.
+  - [`transaksi_page.dart`](./frontend/lib/pages/transaksi_page.dart) — `Omzet Hari Ini`, `Jumlah Transaksi`, pencarian riwayat (invoice/pelanggan/metode/produk), modal detail item (`cartItems`), serta tombol `Reset` berproteksi PIN.
+  - [`profil_page.dart`](./frontend/lib/pages/profil_page.dart) — ubah nama & kategori toko reaktif, statistik `Produk Terdaftar` & `Total Transaksi`, manajemen PIN (Atur / Ganti / Nonaktifkan) & Ganti 2 Nama Keamanan serentak (verifikasi PIN + 1 karakter terakhir kedua nama), **Cadangkan Data CSV** (`Semua` / `Perminggu` / `Bulan` / `Tahun`, `Salin CSV` & `Simpan CSV`), serta `Kosongkan Data Aplikasi` berproteksi PIN.
+  - `keranjang_ui.dart`, `produk_ui.dart`, `profil_ui.dart`, `transaksi_ui.dart` — wrapper kompatibilitas menuju masing-masing halaman.
+- **Widget Reusable (`frontend/lib/widgets/`)**:
+  - [`pin_confirm_dialog.dart`](./frontend/lib/widgets/pin_confirm_dialog.dart) — dialog `confirmSecurityPinForAction` untuk konfirmasi PIN pada aksi destruktif.
+  - [`qris_payment_dialog.dart`](./frontend/lib/widgets/qris_payment_dialog.dart) — dialog pembayaran QRIS berbasis `qr_flutter` dengan info toko reaktif.
+  - [`custom_app_bar.dart`](./frontend/lib/widgets/custom_app_bar.dart) dan [`full_sidebar.dart`](./frontend/lib/widgets/full_sidebar.dart).
+
+### Aset Aplikasi (`frontend/assets/` & Resource Android)
+- **Aset Flutter (`pubspec.yaml`)**:
+  - [`frontend/assets/images/app_logo.png`](./frontend/assets/images/app_logo.png) — logo utama MANJUNI yang ditampilkan pada antarmuka login dan identitas aplikasi.
+- **Aset Android Native (`frontend/android/app/src/main/res/`)**:
+  - Ikon peluncur adaptif & multi-densitas (`mipmap-anydpi-v26/ic_launcher.xml`, `ic_launcher_round.xml`, serta `ic_launcher.png`, `ic_launcher_foreground.png`, `ic_launcher_round.png` pada folder `mipmap-mdpi` hingga `mipmap-xxxhdpi`).
+  - Latar peluncuran & tema (`drawable/launch_background.xml`, `drawable-v21/launch_background.xml`, `values/colors.xml`, `values/styles.xml`, `values-night/styles.xml`).
 
 ---
 
-## Struktur Direktori Proyek
+## 5. Penyimpanan Lokal (Aktif 100% Offline) & Backend Documentation (Arsip/Referensi)
+
+### A. Penyimpanan & Skema Data Lokal Aplikasi Aktif (100% Offline)
+> **Penting:** Aplikasi mobile MANJUNI yang berjalan saat ini beroperasi **100% secara offline** di perangkat pengguna, **tidak menggunakan file `.env`**, dan **tidak melakukan request ke server backend mana pun**.
+
+Seluruh persistensi aplikasi menggunakan `SharedPreferences` dengan key `_v2`:
+
+| Kategori Data | Key `SharedPreferences` | Deskripsi Isi Data |
+| :--- | :--- | :--- |
+| **Produk & Kategori** | `mj_products_v2`, `mj_deleted_products_v2` | Daftar produk (`id`, `name`, `price`, `cost_price`, `shipping_cost`, `hpp_per_unit`, `stock`, `initial_stock`, `unit`, `category`, `weight`, `barcode`, `image` base64 data URI) dan daftar produk terhapus. |
+| **Transaksi & Pelanggan** | `mj_transactions_v2`, `mj_customers_v2`, `mj_users_v2` | Riwayat transaksi lokal (`id`, `transaction_date`, `payment_method`, `total_amount`, `cartItems`, `customer_name`) serta daftar pelanggan/pengguna lokal. |
+| **Keranjang** | `mj_cart_v2` | Item aktif di keranjang (`productId`, `name`, `price`, `costPrice`, `unit`, `maxStock`, `image`, `category`, `qty`). |
+| **Identitas Toko** | `store_name`, `store_category` | Nama toko & kategori usaha yang disinkronkan secara reaktif melalui `storeNameNotifier` dan `storeCategoryNotifier`. |
+| **Keamanan & Rate-Limit** | `mj_security_pin_v2`, `mj_security_name_1_v2`, `mj_security_name_2_v2`, `mj_security_last_char_1_v2`, `mj_security_last_char_2_v2`, `mj_pin_failed_attempts_v2`, `mj_pin_lockout_until_v2`, `mj_recovery_failed_attempts_v2`, `mj_recovery_lockout_until_v2`, `mj_auth_token_v2`, `mj_auth_user_v2` | Hash PBKDF2-HMAC-SHA256 untuk PIN & 2 Nama Keamanan, hash karakter terakhir untuk verifikasi ganti nama keamanan, serta penghitung gagal & waktu berakhir lockout 30 detik. |
+
+### B. Backend Documentation — Arsip Prototipe Laravel (`backend/`)
+> **Catatan:** Direktori [`backend/`](./backend) berisi prototipe awal REST API berbasis **Laravel 11 (PHP `^8.2`) + Laravel Sanctum** dari tahap perancangan terdahulu. Modul ini **tidak digunakan dan tidak perlu dijalankan** agar aplikasi MANJUNI (Flutter 100% offline) berfungsi, namun terdokumentasi di bawah ini sebagai referensi arsitektur API, skema database relasional, dan konfigurasi `.env.example` yang tersedia di repositori.
+
+#### 1. Ringkasan API Endpoints ([`backend/routes/api.php`](./backend/routes/api.php))
+Seluruh route berada di bawah prefix `/api/v1` (mayoritas dilindungi middleware `auth:sanctum` dan pembagian peran `owner`, `cashier`, `partner`):
+
+| Kelompok | Method & Endpoint | Deskripsi Singkat |
+| :--- | :--- | :--- |
+| **Health & Auth** | `GET /v1/health`, `POST /v1/auth/register`, `POST /v1/auth/login`, `POST /v1/auth/logout`, `GET /v1/auth/profile`, `POST /v1/auth/password`, `GET /v1/user` | Cek status API, registrasi usaha, autentikasi Sanctum & profil pengguna |
+| **Kategori & Produk** | `GET/POST /v1/categories`, `PUT/PATCH/DELETE /v1/categories/{category}`, `GET/POST /v1/products`, `GET/PUT/PATCH/DELETE /v1/products/{product}`, `GET /v1/products/barcode/{barcode}`, `GET /v1/products/{product}/stock-movements`, `POST /v1/products/{product}/restock`, `POST /v1/products/restock-by-barcode`, `POST /v1/products/{product}/adjust` (atau `/stock`) | Manajemen katalog, pencarian barcode, mutasi stok, restock & stok opname |
+| **Transaksi** | `GET/POST /v1/transactions`, `GET /v1/transactions/{transaction}`, `POST /v1/transactions/{transaction}/confirm`, `POST /v1/transactions/{transaction}/cancel`, `POST /v1/transactions/{transaction}/void`, `POST\|DELETE /v1/transactions/reset` | Pencatatan transaksi, konfirmasi lunas (potong stok atomik), batal pending, void, dan reset |
+| **Pembayaran & QRIS** | `POST /v1/transactions/{transaction}/pay/cash`, `POST /v1/transactions/{transaction}/pay/bank-transfer`, `GET /v1/transactions/{transaction}/receipt`, `POST /v1/transactions/{transaction}/qris`, `GET /v1/transactions/{transaction}/qris/status` (atau `/status`), `POST /v1/webhook/midtrans`, `POST /v1/payments/midtrans/webhook` | Pembayaran tunai/transfer/QRIS, struk, dan webhook Midtrans |
+| **Dasbor & Laporan** | `GET /v1/dashboard/summary`, `GET /v1/reports/profit-loss`, `GET /v1/reports/cash-flow` | Ringkasan omzet/stok menipis, laporan laba rugi, dan arus kas |
+| **Pengeluaran, Modal, Rencana & User** | `GET/POST /v1/expenses`, `GET /v1/expenses/{expense}`, `POST /v1/expenses/{expense}/void`, `GET/POST /v1/capital`, `DELETE /v1/capital/{capitalEntry}`, `GET/POST /v1/plans`, `GET/PUT/PATCH/DELETE /v1/plans/{plan}`, `GET/POST /v1/users`, `GET/PUT/PATCH /v1/users/{user}`, `POST /v1/users/{user}/toggle-status` | Pencatatan beban operasional, entri modal, rencana usaha (`plans`), dan kelola akun staf (`owner`/`cashier`/`partner`) |
+
+#### 2. Database Schema ([`backend/database/migrations/`](./backend/database/migrations))
+Terdapat 10 tabel bisnis utama (+ tabel pendukung Sanctum/cache/jobs):
+
+| Tabel | Kolom Utama & Relasi |
+| :--- | :--- |
+| **`businesses`** | `id`, `name`, `address`, `phone`, `timestamps` |
+| **`users`** | `id`, `business_id` (FK -> `businesses`), `name`, `email` (unique), `email_verified_at`, `password`, `role` (`owner` \| `cashier` \| `partner`), `is_active`, `remember_token`, `timestamps` *(serta tabel `password_reset_tokens` & `sessions`)* |
+| **`categories`** | `id`, `business_id` (FK -> `businesses`), `name` (unique per `business_id`), `timestamps` |
+| **`products`** | `id`, `business_id` (FK -> `businesses`), `category_id` (FK -> `categories`), `name`, `barcode` (unique per `business_id`), `unit`, `cost_price`, `selling_price`, `stock`, `min_stock`, `is_active`, `deleted_at` (`softDeletes`), `timestamps` |
+| **`transactions`** | `id`, `business_id` (FK -> `businesses`), `user_id` (FK -> `users`), `transaction_date`, `total_amount`, `payment_method` (`cash` \| `qris` \| `transfer` \| `other`), `payment_reference`, `note`, `status` (`pending` \| `completed` \| `cancelled` \| `void`), `paid_at`, `void_reason`, `voided_by` (FK -> `users`), `voided_at`, `timestamps` |
+| **`transaction_items`** | `id`, `transaction_id` (FK -> `transactions`), `product_id` (FK -> `products`), `item_name`, `quantity`, `unit_price`, `cost_price`, `subtotal`, `timestamps` |
+| **`stock_movements`** | `id`, `product_id` (FK -> `products`), `user_id` (FK -> `users`), `transaction_item_id` (FK -> `transaction_items`), `type` (`sale` \| `restock` \| `adjustment` \| `void_return`), `quantity_change`, `stock_after`, `note`, `timestamps` |
+| **`expenses`** | `id`, `business_id` (FK -> `businesses`), `user_id` (FK -> `users`), `expense_date`, `category`, `amount`, `note`, `status` (`completed` \| `void`), `void_reason`, `timestamps` |
+| **`capital_entries`** | `id`, `business_id` (FK -> `businesses`), `user_id` (FK -> `users`), `entry_date`, `type` (`initial` \| `addition` \| `withdrawal`), `amount`, `source_name`, `note`, `timestamps` |
+| **`plans`** | `id`, `business_id` (FK -> `businesses`), `user_id` (FK -> `users`), `title`, `description`, `due_date`, `target_amount`, `status` (`planned` \| `in_progress` \| `done`), `timestamps` |
+
+#### 3. Konfigurasi `.env.example` ([`backend/.env.example`](./backend/.env.example))
+Templat konfigurasi arsip Laravel pada [`backend/.env.example`](./backend/.env.example):
+
+```dotenv
+APP_NAME="MANJUNI API"
+APP_ENV=local
+APP_KEY=
+APP_DEBUG=true
+APP_URL=http://localhost
+
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=manjuni
+DB_USERNAME=root
+DB_PASSWORD=
+
+SESSION_DRIVER=database
+FILESYSTEM_DISK=local
+QUEUE_CONNECTION=database
+CACHE_STORE=database
+
+MIDTRANS_SERVER_KEY=
+MIDTRANS_CLIENT_KEY=
+MIDTRANS_MERCHANT_ID=
+MIDTRANS_IS_PRODUCTION=false
+```
+
+---
+
+## 6. Fitur Lengkap & Update Terakhir
+
+1. **Akses Masuk & Keamanan Lokal (`LoginPage`, `AuthGate`, `SecurityCrypto`)**:
+   - **Masuk Offline Langsung**: Tanpa email/password online. Jika PIN nonaktif, cukup 1 ketuk **Masuk ke Aplikasi**; jika PIN aktif, tersedia buka kunci PIN dan opsi **Lupa Password? Buka dengan Nama Keamanan**.
+   - **Kriptografi Pure-Dart (`SecurityCrypto`)**: Hashing PBKDF2-HMAC-SHA256 (`5.000` iterasi, salt acak 16-byte `Random.secure()`, digest 32-byte, perbandingan *constant-time*) + migrasi otomatis kredensial plaintext lama.
+   - **Rate Limiting & Auto-Lock**: Maksimal `5` percobaan salah memicu jeda `30 detik` persisten; `AuthGate` otomatis mengunci saat aplikasi berpindah ke latar belakang (`AppLifecycleState.paused`) kecuali saat sedang membuka file picker (`isPickingExternalFile`).
+   - **Pengaturan Keamanan Lengkap**: Atur PIN (>= 4 digit) + 2 Nama Keamanan alfanumerik, Ganti PIN, Nonaktifkan PIN (verifikasi PIN lama + 2 Nama Keamanan), Ganti Nama Keamanan serentak (PIN saat ini + **1 karakter terakhir** masing-masing Nama Keamanan saat ini), serta `confirmSecurityPinForAction` untuk `Reset` transaksi & `Kosongkan Data Aplikasi`.
+2. **Dashboard Overview & Analytics (`DashboardPage`, `AnalyticsView`)**:
+   - Toggle *in-place* `Overview` / `Analytics`; header profil toko klik-langsung ke tab `Profil`.
+   - `Overview`: Filter `Today`, `This week`, `This month`, `All time`; `Total orders`, `Total revenue`, ranking **Top Seller** (`#1` badge `Top Seller`), dan **Recent activity**.
+   - `AnalyticsView`: Kartu `Penjualan`, `Pembelian`, `Laba Bersih`, `Transaksi`; grafik batang `Penjualan vs Pembelian` (`HPP`, `Laba Kotor`, `Margin Kotor (%)`, `Markup (vs HPP) (%)`); grafik tren produk terjual interaktif (`7 Hari`, `30 Hari`, `6 Bulan`, `<N> terjual`, badge `Terbanyak`); serta `Komposisi Pembelian`.
+3. **Manajemen Produk, HPP & Stok Real-Time (`ProdukPage`)**:
+   - Ringkasan `Total Produk` & `Stok Menipis` (`< 50%` stok awal, reaktif terhadap isi keranjang), pencarian nama/kategori/barcode, dan 8 filter chip kategori.
+   - Form tambah/edit produk dengan kategori kustom (`Lainnya`), 8 satuan (`pcs`, `kg`, `liter`, `ml`, `gram`, `bungkus`, `botol`, `kemasan`) + **deteksi satuan otomatis** dari `Berat / Ukuran` (contoh `250ml` -> `ml`), upload foto dari perangkat (kompresi Android 600px JPEG base64), auto-focus kolom wajib, kalkulasi otomatis `HPP / Produk` (`Modal + Ongkir/Stok`), `Untung/Rugi`, `Markup`, & `Margin`, serta proteksi stok real-time (`Tambah` -> `Habis`).
+4. **Keranjang & Kasir POS (`KeranjangPage`, `CartService`, `QrisPaymentDialog`)**:
+   - Thumbnail foto produk, kontrol jumlah ketat sesuai sisa stok, metode `Tunai` / `QRIS` / `Kasbon`, ringkasan tanpa baris diskon, dan simpan transaksi lokal.
+5. **Riwayat Transaksi & Profil CSV Export (`TransaksiPage`, `ProfilPage`, `MainActivity.kt`)**:
+   - `Omzet Hari Ini` & `Jumlah Transaksi`, pencarian riwayat & modal detail item, sinkronisasi nama & kategori toko secara reaktif lintas halaman, `Kosongkan Data Aplikasi` ber-PIN, serta ekspor CSV offline (`Semua` / `Perminggu` / `Bulan` / `Tahun`) berformat Excel (`sep=,`, CRLF `\r\n`) dengan **sanitasi CSV Formula Injection** (`=`, `+`, `-`, `@`, `\t`, `\r` diawali `'`) untuk disalin ke clipboard atau disimpan ke folder `Download`.
+
+### Ringkasan Pembaruan Terakhir (Changelog)
+1. **`Security Update` (`457fef1` – 2026-11-14)**: Pure-Dart `SecurityCrypto` (PBKDF2-HMAC-SHA256 + salt acak 16-byte), migrasi hash otomatis, rate limiting 5x salah / 30 detik persisten, `AuthGate` auto-lock background, konfirmasi PIN pada aksi destruktif, sanitasi CSV formula injection, dan pengamanan Android (`allowBackup="false"`, `usesCleartextTraffic="false"`, tanpa `INTERNET`, optional release keystore via `android/key.properties`).
+2. **`Bugfix2 Final Version` (`d6a1cc5` – 2026-11-14)**: Sinkronisasi reaktif `storeNameNotifier` & `storeCategoryNotifier` dari `ProfilPage` ke `KeranjangPage`, `TransaksiPage`, `FullSidebar`, dan `QrisPaymentDialog`.
+3. **`Stable bugfix Final version` (`5c06036` – 2026-11-14)**: Penyesuaian branding aplikasi `MANJUNI`, penambahan satuan `ml` + auto-deteksi `ml`, label `Modal / Produk` & `HPP / Produk`, serta penghapusan baris `Diskon` pada `KeranjangPage`.
+4. **`Stable Version Final` (`dd6f081` – 2026-11-14)**: Penguncian mode 100% offline dengan skema penyimpanan `_v2`, PIN + 2 Nama Keamanan alfanumerik (termasuk ganti serentak), ongkir dalam HPP, `Markup` & `Margin`, validasi *auto-focus* produk, thumbnail foto di keranjang, dan logo terbaru `app_logo.png`.
+5. **`Stable Version` (`3424289` – 2026-11-14)**: Integrasi `MainActivity.kt` (`MethodChannel com.example.majunih/file_export`) untuk ekspor CSV ke `Download` & image picker lokal, pengurangan stok real-time, serta tren produk terjual & ranking `Top Seller`.
+
+---
+
+## 7. Petunjuk Localhost (Instalasi Dependencies & Menjalankan di Laptop Finalis)
+
+### A. Menjalankan Aplikasi Utama MANJUNI (Flutter — 100% Offline, Tanpa Server)
+Aplikasi MANJUNI berjalan mandiri di perangkat/emulator/desktop pada laptop finalis **tanpa perlu menyalakan server backend atau database eksternal**.
+
+#### Prasyarat di Laptop Finalis
+- **Flutter SDK** (dengan **Dart SDK `^3.13.7`**) terpasang dan terdaftar di `PATH`.
+- Salah satu target eksekusi lokal:
+  - **Android Emulator** (Android Studio) atau **Perangkat Android fisik** (aktifkan *USB Debugging*), **atau**
+  - **Windows Desktop** (*Visual Studio Desktop development with C++* jika menjalankan target Windows), **atau**
+  - **Browser Chrome/Edge** untuk pratinjau cepat web lokal.
+
+#### Langkah Instalasi Dependencies & Eksekusi Lokal
+```bash
+# 1. Masuk ke direktori frontend Flutter
+cd frontend
+
+# 2. Unduh / selesaikan dependencies Flutter dari pubspec.yaml
+flutter pub get
+
+# 3. Pastikan target device/emulator/desktop terdeteksi
+flutter devices
+
+# 4. Jalankan aplikasi secara lokal (pilih salah satu target)
+flutter run                  # Menjalankan ke emulator/HP Android yang terhubung
+flutter run -d windows       # Menjalankan langsung di desktop Windows (localhost)
+flutter run -d chrome        # Menjalankan di browser lokal (localhost)
+```
+
+#### Menjalankan Pengujian Otomatis (`frontend/test/`)
+Tersedia 12 berkas pengujian unit dan widget di [`frontend/test/`](./frontend/test) (`security_test.dart`, `produk_page_test.dart`, `keranjang_page_test.dart`, `dashboard_page_test.dart`, `analytics_page_test.dart`, `profil_page_test.dart`, `transaksi_page_test.dart`, `qris_payment_test.dart`, `custom_app_bar_test.dart`, `full_sidebar_test.dart`, `overview_and_profil_fixes_test.dart`, `widget_test.dart`):
+
+```bash
+cd frontend
+flutter test
+```
+
+#### Build APK Android Offline (Release)
+```bash
+cd frontend
+flutter build apk --release
+```
+*(Opsional)* Tambahkan `frontend/android/key.properties` sesuai [`frontend/android/build.gradle.kts`](./frontend/android/build.gradle.kts) untuk signing rilis kustom; jika tidak tersedia, Gradle otomatis memakai *debug signing fallback*.
+
+---
+
+### B. *(Opsional)* Menjalankan Arsip Backend Laravel di Localhost
+> Langkah ini **tidak diperlukan** untuk menjalankan atau menguji aplikasi mobile MANJUNI (karena aplikasi aktif 100% offline). Disediakan hanya jika penguji ingin meninjau API/migrasi arsip pada folder [`backend/`](./backend) di `http://127.0.0.1:8000`.
+
+```bash
+# 1. Masuk ke folder backend (butuh PHP >= 8.2 dan Composer)
+cd backend
+
+# 2. Instal dependencies PHP
+composer install
+
+# 3. Salin file konfigurasi contoh & generate key aplikasi
+cp .env.example .env
+php artisan key:generate
+
+# 4. Atur DB_CONNECTION pada .env (MySQL database 'manjuni' atau SQLite 'database/database.sqlite')
+#    Lalu jalankan migrasi & seeder database:
+php artisan migrate --seed
+
+# 5. Jalankan server lokal Laravel di localhost
+php artisan serve
+# Akses health check di: http://127.0.0.1:8000/api/v1/health
+
+# 6. (Opsional) Jalankan pengujian backend
+php artisan test
+```
+
+---
+
+## 8. Struktur Direktori Proyek
 
 ```text
 MANJUNI/
-├── README.md                                  # Dokumentasi proyek (dokumen ini)
-├── frontend/                                  # Aplikasi aktif Flutter (100% Offline)
-│   ├── pubspec.yaml                           # Manifest & dependensi Flutter (package: majunih)
-│   ├── analysis_options.yaml                  # Konfigurasi linter Dart/Flutter
+├── README.md                                  # Dokumentasi lengkap proyek (dokumen ini)
+├── frontend/                                  # Aplikasi utama Flutter (100% Offline)
+│   ├── pubspec.yaml                           # Manifest & dependencies Flutter (package: majunih)
+│   ├── analysis_options.yaml                  # Konfigurasi linter Flutter
 │   ├── assets/
-│   │   └── images/app_logo.png                # Logo utama aplikasi MANJUNI
+│   │   └── images/app_logo.png                # Aset logo aplikasi MANJUNI
 │   ├── android/
 │   │   └── app/
-│   │       ├── build.gradle.kts               # Konfigurasi build & keystore rilis opsional
+│   │       ├── build.gradle.kts               # Konfigurasi build & release signing opsional
 │   │       └── src/main/
 │   │           ├── AndroidManifest.xml        # Tanpa izin INTERNET, allowBackup=false
+│   │           ├── res/                       # Adaptive launcher icons & theme resources
 │   │           └── kotlin/com/example/majunih/
 │   │               └── MainActivity.kt        # MethodChannel file_export (CSV Downloads & pickImage)
 │   ├── lib/
 │   │   ├── main.dart                          # Inisialisasi loadLocalData() & runApp(MyApp)
-│   │   ├── app.dart                           # Tema utama & AuthGate (auto-lock lifecycle)
+│   │   ├── app.dart                           # Tema Material 3 & AuthGate (auto-lock lifecycle)
 │   │   ├── mobile_shell.dart                  # Shell navigasi 5 tab utama + badge keranjang
 │   │   ├── shell.dart                         # Shell alternatif dengan FullSidebar drawer
 │   │   ├── pages/
@@ -197,10 +374,10 @@ MANJUNI/
 │   │   │   ├── profil_page.dart               # Identitas toko, PIN/Nama Keamanan & ekspor CSV
 │   │   │   └── *_ui.dart                      # Wrapper UI halaman (keranjang, produk, profil, transaksi)
 │   │   ├── services/
-│   │   │   ├── api_service.dart               # Core state & penyimpanan lokal 100% offline (_v2)
+│   │   │   ├── api_service.dart               # Logika bisnis lokal & persistensi SharedPreferences (_v2)
 │   │   │   ├── security_crypto.dart           # SHA-256, HMAC-SHA256 & PBKDF2-HMAC-SHA256
 │   │   │   ├── cart_service.dart              # State keranjang lokal & sinkronisasi batas stok
-│   │   │   ├── navigation_service.dart        # Pengaturan tab aktif dari shell navigasi
+│   │   │   ├── navigation_service.dart        # Pengaturan tab aktif shell navigasi
 │   │   │   └── api_config.dart                # Konfigurasi historis
 │   │   └── widgets/
 │   │       ├── pin_confirm_dialog.dart        # Dialog verifikasi PIN sebelum aksi destruktif
@@ -208,47 +385,9 @@ MANJUNI/
 │   │       ├── custom_app_bar.dart            # Komponen AppBar kustom
 │   │       └── full_sidebar.dart              # Sidebar navigasi dengan info toko reaktif
 │   └── test/                                  # 12 berkas pengujian unit & widget Flutter
-│       ├── analytics_page_test.dart
-│       ├── custom_app_bar_test.dart
-│       ├── dashboard_page_test.dart
-│       ├── full_sidebar_test.dart
-│       ├── keranjang_page_test.dart
-│       ├── overview_and_profil_fixes_test.dart
-│       ├── produk_page_test.dart
-│       ├── profil_page_test.dart
-│       ├── qris_payment_test.dart
-│       ├── security_test.dart
-│       ├── transaksi_page_test.dart
-│       └── widget_test.dart
-└── backend/                                   # Arsip prototipe awal Laravel (tidak digunakan oleh app offline)
+└── backend/                                   # Arsip prototipe awal REST API Laravel (opsional/non-aktif)
+    ├── .env.example                           # Templat konfigurasi environment backend Laravel
+    ├── composer.json                          # Dependencies PHP ^8.2, Laravel ^11.0, Sanctum ^4.0
+    ├── routes/api.php                         # Definisi endpoint REST API /api/v1
+    └── database/migrations/                   # Skema 10+ tabel database relasional
 ```
-
----
-
-## Cara Menjalankan, Menguji &amp; Build Aplikasi
-
-Seluruh perintah dijalankan dari direktori [`frontend/`](./frontend):
-
-```bash
-cd frontend
-flutter pub get
-flutter run
-```
-
-### Pengujian Otomatis (`frontend/test/`)
-
-Terdapat 12 berkas test unit dan widget (termasuk pengujian keamanan kriptografi `PBKDF2`, rate-limit, sanitasi CSV, *auto-lock*, alur produk, keranjang, dashboard, analitik, profil, transaksi, dan QRIS). Untuk menjalankannya secara lokal:
-
-```bash
-cd frontend
-flutter test
-```
-
-### Build APK Android Offline (Release)
-
-```bash
-cd frontend
-flutter build apk --release
-```
-
-*(Opsional)* Untuk menandatangani build rilis menggunakan keystore sendiri, tambahkan berkas `frontend/android/key.properties` sesuai konfigurasi di [`frontend/android/build.gradle.kts`](./frontend/android/build.gradle.kts). Jika `key.properties` belum tersedia, konfigurasi build otomatis memakai *debug signing fallback* agar build lokal tetap berjalan.
