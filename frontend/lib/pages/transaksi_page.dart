@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/api_config.dart';
 import '../services/api_service.dart';
 import '../services/navigation_service.dart';
+import '../widgets/pin_confirm_dialog.dart';
 
 class TransaksiPage extends StatefulWidget {
   const TransaksiPage({super.key});
@@ -322,6 +323,14 @@ class _TransaksiPageState extends State<TransaksiPage> {
                     ElevatedButton(
                       onPressed: () async {
                         Navigator.pop(ctx);
+                        if (!mounted) return;
+                        final verified = await confirmSecurityPinForAction(
+                          context,
+                          actionTitle: 'Verifikasi PIN Reset Riwayat',
+                          actionDescription:
+                              'Masukkan PIN keamanan untuk mengosongkan seluruh riwayat transaksi.',
+                        );
+                        if (!verified || !mounted) return;
                         // Kosongkan riwayat transaksi (lokal & backend); produk tetap ada.
                         await ApiService.resetTransactions();
                         if (!mounted) return;

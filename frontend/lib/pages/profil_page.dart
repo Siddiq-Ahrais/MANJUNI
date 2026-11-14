@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/api_service.dart';
 import '../services/cart_service.dart';
+import '../widgets/pin_confirm_dialog.dart';
 
 class ProfilPage extends StatefulWidget {
   const ProfilPage({super.key});
@@ -625,7 +626,7 @@ class _ProfilPageState extends State<ProfilPage> {
                       keyboardType: TextInputType.number,
                       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                       decoration: InputDecoration(
-                        hintText: 'Masukkan angka PIN',
+                        hintText: 'Masukkan angka PIN (minimal 4 digit)',
                         isDense: true,
                         prefixIcon: const Icon(Icons.pin_outlined, color: kGreen, size: 20),
                         suffixIcon: IconButton(
@@ -1033,7 +1034,7 @@ class _ProfilPageState extends State<ProfilPage> {
                       keyboardType: TextInputType.number,
                       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                       decoration: InputDecoration(
-                        hintText: 'Masukkan angka PIN baru',
+                        hintText: 'Masukkan angka PIN baru (minimal 4 digit)',
                         isDense: true,
                         prefixIcon: const Icon(Icons.pin_outlined, color: kGreen, size: 20),
                         suffixIcon: IconButton(
@@ -1728,6 +1729,14 @@ class _ProfilPageState extends State<ProfilPage> {
           ElevatedButton(
             onPressed: () async {
               Navigator.pop(ctx);
+              if (!mounted) return;
+              final verified = await confirmSecurityPinForAction(
+                context,
+                actionTitle: 'Verifikasi PIN Keamanan',
+                actionDescription:
+                    'Masukkan PIN keamanan sebelum mengosongkan seluruh data aplikasi.',
+              );
+              if (!verified || !mounted) return;
               await ApiService.clearAllAppData();
               if (!mounted) return;
               await _loadStoreInfo();

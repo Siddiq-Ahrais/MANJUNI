@@ -22,7 +22,7 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-  void _unlockWithPin() {
+  Future<void> _unlockWithPin() async {
     final pin = _pinCtrl.text.trim();
     if (pin.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -35,11 +35,14 @@ class _LoginPageState extends State<LoginPage> {
       return;
     }
 
-    final ok = ApiService.verifySecurityPin(pin);
-    if (!ok) {
+    final res = await ApiService.verifySecurityPinDetailed(pin);
+    if (!mounted) return;
+    if (res['success'] != true) {
+      final msg =
+          (res['message'] ?? 'PIN keamanan yang dimasukkan salah!').toString();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('PIN keamanan yang dimasukkan salah!'),
+        SnackBar(
+          content: Text(msg),
           backgroundColor: Colors.redAccent,
           behavior: SnackBarBehavior.floating,
         ),
@@ -166,7 +169,8 @@ class _LoginPageState extends State<LoginPage> {
                       keyboardType: TextInputType.number,
                       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                       decoration: InputDecoration(
-                        hintText: 'Kosongkan jika hanya ingin membuka aplikasi',
+                        hintText:
+                            'Kosongkan jika hanya ingin membuka aplikasi (min. 4 digit angka)',
                         isDense: true,
                         prefixIcon: const Icon(Icons.pin_outlined, color: kGreen, size: 20),
                         suffixIcon: IconButton(

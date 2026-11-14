@@ -37,12 +37,38 @@ class MyApp extends StatelessWidget {
 }
 
 /// Gerbang otentikasi:
-/// - Belum punya token (belum login / token kedaluwarsa) -> LoginPage
-/// - Sudah login -> MobileShell
+/// - Belum punya token / PIN belum dibuka -> LoginPage
+/// - Sudah login / terbuka -> MobileShell
 /// Status login bersifat reaktif via ApiService.authStateNotifier,
-/// sehingga logout maupun 401 otomatis mengembalikan user ke halaman login.
-class AuthGate extends StatelessWidget {
+/// dan mengunci ulang otomatis saat aplikasi ke background jika PIN aktif.
+class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
+
+  @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused &&
+        ApiService.hasSecurityPin &&
+        !ApiService.isPickingExternalFile) {
+      ApiService.lockApp();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

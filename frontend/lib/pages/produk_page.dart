@@ -111,52 +111,57 @@ class _ProdukPageState extends State<ProdukPage> {
   Future<Map<String, String>?> _pickImageFromDevice({
     void Function(String message)? onError,
   }) async {
+    ApiService.isPickingExternalFile = true;
     try {
-      final picked = await _deviceChannel.invokeMapMethod<String, dynamic>('pickImage');
-      if (picked != null && (picked['base64'] as String?)?.isNotEmpty == true) {
-        return {
-          'base64': picked['base64'] as String,
-          'name': (picked['name'] as String?) ?? 'Foto Produk',
-        };
-      }
-      if (!kIsWeb && Platform.isAndroid) {
-        return null;
-      }
-    } on MissingPluginException {
-      if (!kIsWeb && Platform.isAndroid) {
-        onError?.call(
-          'Pemilih file perangkat belum aktif. Silakan build ulang aplikasi Android.',
-        );
-        return null;
-      }
-    } catch (e) {
-      onError?.call('Gagal memilih file gambar: $e');
-      return null;
-    }
-
-    if (!kIsWeb && Platform.isWindows) {
       try {
-        final result = await Process.run('powershell', [
-          '-NoProfile',
-          '-Command',
-          "Add-Type -AssemblyName System.Windows.Forms; \$f = New-Object System.Windows.Forms.OpenFileDialog; \$f.Filter = 'Image Files (*.png;*.jpg;*.jpeg;*.webp)|*.png;*.jpg;*.jpeg;*.webp'; if (\$f.ShowDialog() -eq 'OK') { Write-Output \$f.FileName }",
-        ]);
-        final pickedPath = result.stdout.toString().trim();
-        if (pickedPath.isNotEmpty) {
-          final file = File(pickedPath);
-          if (await file.exists()) {
-            final bytes = await file.readAsBytes();
-            final ext = pickedPath.toLowerCase().endsWith('.png') ? 'png' : 'jpeg';
-            final b64 = 'data:image/$ext;base64,${base64Encode(bytes)}';
-            final fileName = pickedPath.split(RegExp(r'[\\/]')).last;
-            return {'base64': b64, 'name': fileName};
-          }
+        final picked = await _deviceChannel.invokeMapMethod<String, dynamic>('pickImage');
+        if (picked != null && (picked['base64'] as String?)?.isNotEmpty == true) {
+          return {
+            'base64': picked['base64'] as String,
+            'name': (picked['name'] as String?) ?? 'Foto Produk',
+          };
+        }
+        if (!kIsWeb && Platform.isAndroid) {
+          return null;
+        }
+      } on MissingPluginException {
+        if (!kIsWeb && Platform.isAndroid) {
+          onError?.call(
+            'Pemilih file perangkat belum aktif. Silakan build ulang aplikasi Android.',
+          );
+          return null;
         }
       } catch (e) {
-        onError?.call('Gagal membuka pemilih file Windows: $e');
+        onError?.call('Gagal memilih file gambar: $e');
+        return null;
       }
+
+      if (!kIsWeb && Platform.isWindows) {
+        try {
+          final result = await Process.run('powershell', [
+            '-NoProfile',
+            '-Command',
+            "Add-Type -AssemblyName System.Windows.Forms; \$f = New-Object System.Windows.Forms.OpenFileDialog; \$f.Filter = 'Image Files (*.png;*.jpg;*.jpeg;*.webp)|*.png;*.jpg;*.jpeg;*.webp'; if (\$f.ShowDialog() -eq 'OK') { Write-Output \$f.FileName }",
+          ]);
+          final pickedPath = result.stdout.toString().trim();
+          if (pickedPath.isNotEmpty) {
+            final file = File(pickedPath);
+            if (await file.exists()) {
+              final bytes = await file.readAsBytes();
+              final ext = pickedPath.toLowerCase().endsWith('.png') ? 'png' : 'jpeg';
+              final b64 = 'data:image/$ext;base64,${base64Encode(bytes)}';
+              final fileName = pickedPath.split(RegExp(r'[\\/]')).last;
+              return {'base64': b64, 'name': fileName};
+            }
+          }
+        } catch (e) {
+          onError?.call('Gagal membuka pemilih file Windows: $e');
+        }
+      }
+      return null;
+    } finally {
+      ApiService.isPickingExternalFile = false;
     }
-    return null;
   }
 
   /// Dialog untuk memilih file gambar produk langsung dari folder perangkat

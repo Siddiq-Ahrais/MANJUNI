@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api_config.dart';
 import 'cart_service.dart';
+import 'security_crypto.dart';
 
 class ApiService {
   // Status koneksi: null = belum dicek, true = online (terhubung ke server), false = offline
@@ -114,20 +115,252 @@ class ApiService {
   static const String _kSecurityPinKey = 'mj_security_pin_v2';
   static const String _kSecurityName1Key = 'mj_security_name_1_v2';
   static const String _kSecurityName2Key = 'mj_security_name_2_v2';
-  static String _securityPin = '';
-  static String _securityName1 = '';
-  static String _securityName2 = '';
-  static final RegExp alphanumericRegex = RegExp(r'^[a-zA-Z0-9]+$');
+  static const String _kSecurityLastChar1Key = 'mj_security_last_char_1_v2';
+  static const String _kSecurityLastChar2Key = 'mj_security_last_char_2_v2';
+  static const String _kPinFailedAttemptsKey = 'mj_pin_failed_attempts_v2';
+  static const String _kPinLockoutUntilKey = 'mj_pin_lockout_until_v2';
+  static const String _kRecoveryFailedAttemptsKey = 'mj_recovery_failed_attempts_v2';
+  static const String _kRecoveryLockoutUntilKey = 'mj_recovery_lockout_until_v2';
 
-  static bool get hasSecurityPin => _securityPin.isNotEmpty;
-  static String get securityPin => _securityPin;
-  static String get securityName1 => _securityName1;
-  static String get securityName2 => _securityName2;
+  static const int minPinLength = 4;
+  static const int maxFailedAttempts = 5;
+  static const Duration lockoutDuration = Duration(seconds: 30);
+
+  static String _securityPinHash = '';
+  static String _securityName1Hash = '';
+  static String _securityName2Hash = '';
+  static String _securityLastChar1Hash = '';
+  static String _securityLastChar2Hash = '';
+  static int _pinFailedAttempts = 0;
+  static DateTime? _pinLockoutUntil;
+  static int _recoveryFailedAttempts = 0;
+  static DateTime? _recoveryLockoutUntil;
+
+  /// Flag sementara saat picker file/galeri eksternal terbuka agar
+  /// transisi lifecycle paused tidak memicu auto-lock yang salah.
+  static bool isPickingExternalFile = false;
+
+  static final RegExp alphanumericRegex = RegExp(r'^[a-zA-Z0-9]+$');
+  static final RegExp pinFormatRegex = RegExp(r'^\d{4,}$');
+
+  static bool get hasSecurityPin => _securityPinHash.isNotEmpty;
 
   static int _transactionsResetMaxId = 0;
   static int _lastFetchedMaxServerTxId = 0;
   static DateTime? _transactionsResetAt;
   static bool _localDataLoaded = false;
+
+  static bool _verifyStoredSecret(String raw, String stored) {
+    if (stored.isEmpty) return false;
+    if (SecurityCrypto.isHashed(stored)) {
+      return SecurityCrypto.verifySecret(raw, stored);
+    }
+    return raw == stored;
+  }
+
+  static String? _validateNewPin(String pin, String confirmPin, {bool isNew = false}) {
+    final label = isNew ? 'PIN baru' : 'PIN';
+    if (pin.isEmpty) {
+      return '$label wajib diisi!';
+    }
+    if (!pinFormatRegex.hasMatch(pin)) {
+      return 'PIN keamanan minimal $minPinLength digit angka!';
+    }
+    if (pin != confirmPin) {
+      return '$label dan Konfirmasi $label harus sama!';
+    }
+    return null;
+  }
+
+  static int _remainingCooldownSeconds(
+    DateTime? until,
+    void Function() onExpired, {
+    DateTime? now,
+  }) {
+    if (until == null) return 0;
+    final diffMs = until.difference((now ?? DateTime.now()).toUtc()).inMilliseconds;
+    if (diffMs <= 0) {
+      onExpired();
+      return 0;
+    }
+    return (diffMs + 999) ~/ 1000;
+  }
+
+  static int getRemainingPinLockoutSeconds({DateTime? now}) {
+    return _remainingCooldownSeconds(_pinLockoutUntil, () {
+      _pinLockoutUntil = null;
+      _pinFailedAttempts = 0;
+    }, now: now);
+  }
+
+  static int getRemainingRecoveryLockoutSeconds({DateTime? now}) {
+    return _remainingCooldownSeconds(_recoveryLockoutUntil, () {
+      _recoveryLockoutUntil = null;
+      _recoveryFailedAttempts = 0;
+    }, now: now);
+  }
+
+  static Future<void> _persistSecurityRateLimit() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_kPinFailedAttemptsKey, _pinFailedAttempts);
+      if (_pinLockoutUntil != null) {
+        await prefs.setString(_kPinLockoutUntilKey, _pinLockoutUntil!.toUtc().toIso8601String());
+      } else {
+        await prefs.remove(_kPinLockoutUntilKey);
+      }
+      await prefs.setInt(_kRecoveryFailedAttemptsKey, _recoveryFailedAttempts);
+      if (_recoveryLockoutUntil != null) {
+        await prefs.setString(
+          _kRecoveryLockoutUntilKey,
+          _recoveryLockoutUntil!.toUtc().toIso8601String(),
+        );
+      } else {
+        await prefs.remove(_kRecoveryLockoutUntilKey);
+      }
+    } catch (_) {}
+  }
+
+  static Map<String, dynamic> _evaluatePinAttempt(
+    String inputPin, {
+    bool unlockSession = true,
+  }) {
+    if (_securityPinHash.isEmpty) {
+      _pinFailedAttempts = 0;
+      _pinLockoutUntil = null;
+      if (unlockSession) {
+        authStateNotifier.value = true;
+      }
+      return {
+        'success': true,
+        'message': 'PIN tidak aktif.',
+        'lockedOut': false,
+        'remainingSeconds': 0,
+      };
+    }
+
+    final remaining = getRemainingPinLockoutSeconds();
+    if (remaining > 0) {
+      return {
+        'success': false,
+        'message':
+            'Terlalu banyak percobaan PIN salah. Tunggu $remaining detik sebelum mencoba lagi.',
+        'lockedOut': true,
+        'remainingSeconds': remaining,
+      };
+    }
+
+    final clean = inputPin.trim();
+    if (clean.isNotEmpty && _verifyStoredSecret(clean, _securityPinHash)) {
+      _pinFailedAttempts = 0;
+      _pinLockoutUntil = null;
+      if (unlockSession) {
+        authStateNotifier.value = true;
+      }
+      return {
+        'success': true,
+        'message': 'PIN sesuai.',
+        'lockedOut': false,
+        'remainingSeconds': 0,
+      };
+    }
+
+    _pinFailedAttempts++;
+    if (_pinFailedAttempts >= maxFailedAttempts) {
+      _pinLockoutUntil = DateTime.now().toUtc().add(lockoutDuration);
+      final lockSecs = getRemainingPinLockoutSeconds();
+      return {
+        'success': false,
+        'message':
+            'Terlalu banyak percobaan PIN salah ($maxFailedAttempts kali). Tunggu $lockSecs detik.',
+        'lockedOut': true,
+        'remainingSeconds': lockSecs,
+      };
+    }
+
+    final attemptsLeft = maxFailedAttempts - _pinFailedAttempts;
+    return {
+      'success': false,
+      'message':
+          'PIN keamanan salah! Sisa percobaan: $attemptsLeft kali sebelum jeda ${lockoutDuration.inSeconds} detik.',
+      'lockedOut': false,
+      'remainingSeconds': 0,
+    };
+  }
+
+  static Map<String, dynamic> _evaluateRecoveryNamesAttempt({
+    required String name1,
+    required String name2,
+  }) {
+    final remaining = getRemainingRecoveryLockoutSeconds();
+    if (remaining > 0) {
+      return {
+        'success': false,
+        'message':
+            'Terlalu banyak percobaan Nama Keamanan salah. Tunggu $remaining detik sebelum mencoba lagi.',
+        'lockedOut': true,
+        'remainingSeconds': remaining,
+      };
+    }
+
+    final n1 = name1.trim().toLowerCase();
+    final n2 = name2.trim().toLowerCase();
+    final matched = n1.isNotEmpty &&
+        n2.isNotEmpty &&
+        _verifyStoredSecret(n1, _securityName1Hash) &&
+        _verifyStoredSecret(n2, _securityName2Hash);
+
+    if (matched) {
+      _recoveryFailedAttempts = 0;
+      _recoveryLockoutUntil = null;
+      return {
+        'success': true,
+        'message': 'Nama Keamanan sesuai.',
+        'lockedOut': false,
+        'remainingSeconds': 0,
+      };
+    }
+
+    _recoveryFailedAttempts++;
+    if (_recoveryFailedAttempts >= maxFailedAttempts) {
+      _recoveryLockoutUntil = DateTime.now().toUtc().add(lockoutDuration);
+      final lockSecs = getRemainingRecoveryLockoutSeconds();
+      return {
+        'success': false,
+        'message':
+            'Terlalu banyak percobaan Nama Keamanan salah ($maxFailedAttempts kali). Tunggu $lockSecs detik.',
+        'lockedOut': true,
+        'remainingSeconds': lockSecs,
+      };
+    }
+
+    final attemptsLeft = maxFailedAttempts - _recoveryFailedAttempts;
+    return {
+      'success': false,
+      'message':
+          'Nama Keamanan 1 atau Nama Keamanan 2 tidak sesuai! Sisa percobaan: $attemptsLeft kali.',
+      'lockedOut': false,
+      'remainingSeconds': 0,
+    };
+  }
+
+  static void _storeHashedSecurityNames(String name1, String name2) {
+    final lower1 = name1.toLowerCase();
+    final lower2 = name2.toLowerCase();
+    _securityName1Hash = SecurityCrypto.hashSecret(lower1);
+    _securityName2Hash = SecurityCrypto.hashSecret(lower2);
+    _securityLastChar1Hash =
+        SecurityCrypto.hashSecret(lower1.substring(lower1.length - 1));
+    _securityLastChar2Hash =
+        SecurityCrypto.hashSecret(lower2.substring(lower2.length - 1));
+  }
+
+  /// Mengunci aplikasi ketika kembali ke background apabila PIN keamanan aktif.
+  static void lockApp() {
+    if (_securityPinHash.isNotEmpty && authStateNotifier.value) {
+      authStateNotifier.value = false;
+    }
+  }
 
   /// Simpan pengaturan PIN Keamanan dan 2 Nama Keamanan (hanya huruf & angka).
   static Future<Map<String, dynamic>> setSecurityPin({
@@ -141,14 +374,9 @@ class ApiService {
     final cleanName1 = securityName1.trim();
     final cleanName2 = securityName2.trim();
 
-    if (cleanPin.isEmpty) {
-      return {'success': false, 'message': 'PIN wajib diisi!'};
-    }
-    if (cleanPin != cleanConfirm) {
-      return {
-        'success': false,
-        'message': 'PIN dan Konfirmasi PIN harus sama!',
-      };
+    final pinError = _validateNewPin(cleanPin, cleanConfirm);
+    if (pinError != null) {
+      return {'success': false, 'message': pinError};
     }
     if (cleanName1.isEmpty || cleanName2.isEmpty) {
       return {
@@ -164,9 +392,12 @@ class ApiService {
       };
     }
 
-    _securityPin = cleanPin;
-    _securityName1 = cleanName1;
-    _securityName2 = cleanName2;
+    _securityPinHash = SecurityCrypto.hashSecret(cleanPin);
+    _storeHashedSecurityNames(cleanName1, cleanName2);
+    _pinFailedAttempts = 0;
+    _pinLockoutUntil = null;
+    _recoveryFailedAttempts = 0;
+    _recoveryLockoutUntil = null;
     dataChangedNotifier.value++;
     await _persistLocalData();
     return {
@@ -177,21 +408,45 @@ class ApiService {
 
   /// Hapus / nonaktifkan PIN keamanan perangkat.
   static Future<void> clearSecurityPin() async {
-    _securityPin = '';
-    _securityName1 = '';
-    _securityName2 = '';
+    _securityPinHash = '';
+    _securityName1Hash = '';
+    _securityName2Hash = '';
+    _securityLastChar1Hash = '';
+    _securityLastChar2Hash = '';
+    _pinFailedAttempts = 0;
+    _pinLockoutUntil = null;
+    _recoveryFailedAttempts = 0;
+    _recoveryLockoutUntil = null;
     authStateNotifier.value = true;
     dataChangedNotifier.value++;
     await _persistLocalData();
   }
 
+  /// Verifikasi PIN keamanan dengan detail pesan dan status jeda percobaan.
+  static Future<Map<String, dynamic>> verifySecurityPinDetailed(
+    String inputPin, {
+    bool unlockSession = true,
+  }) async {
+    final res = _evaluatePinAttempt(inputPin, unlockSession: unlockSession);
+    await _persistSecurityRateLimit();
+    return res;
+  }
+
   /// Verifikasi PIN keamanan untuk membuka kunci aplikasi.
   static bool verifySecurityPin(String inputPin) {
-    if (_securityPin.isEmpty || _securityPin == inputPin.trim()) {
-      authStateNotifier.value = true;
-      return true;
-    }
-    return false;
+    final res = _evaluatePinAttempt(inputPin);
+    _persistSecurityRateLimit();
+    return res['success'] == true;
+  }
+
+  /// Verifikasi kesesuaian 2 nama keamanan dengan detail jeda percobaan.
+  static Future<Map<String, dynamic>> verifySecurityNamesDetailed({
+    required String name1,
+    required String name2,
+  }) async {
+    final res = _evaluateRecoveryNamesAttempt(name1: name1, name2: name2);
+    await _persistSecurityRateLimit();
+    return res;
   }
 
   /// Verifikasi kesesuaian 2 nama keamanan (Nama Keamanan 1 & Nama Keamanan 2).
@@ -199,11 +454,9 @@ class ApiService {
     required String name1,
     required String name2,
   }) {
-    final n1 = name1.trim().toLowerCase();
-    final n2 = name2.trim().toLowerCase();
-    if (n1.isEmpty || n2.isEmpty) return false;
-    return n1 == _securityName1.trim().toLowerCase() &&
-        n2 == _securityName2.trim().toLowerCase();
+    final res = _evaluateRecoveryNamesAttempt(name1: name1, name2: name2);
+    _persistSecurityRateLimit();
+    return res['success'] == true;
   }
 
   /// Ganti PIN keamanan dari dalam aplikasi (meminta PIN lama + 2 Nama Keamanan sebagai autentikasi keamanan).
@@ -218,35 +471,37 @@ class ApiService {
     final cleanNew = newPin.trim();
     final cleanConfirm = confirmNewPin.trim();
 
-    if (_securityPin.isEmpty) {
+    if (_securityPinHash.isEmpty) {
       return {
         'success': false,
         'message': 'PIN belum diatur. Gunakan menu Atur PIN Keamanan.',
       };
     }
-    if (cleanOld.isEmpty || cleanOld != _securityPin) {
+    final pinCheck = await verifySecurityPinDetailed(cleanOld, unlockSession: false);
+    if (pinCheck['success'] != true) {
       return {
         'success': false,
-        'message': 'PIN lama yang dimasukkan tidak sesuai!',
+        'message': pinCheck['lockedOut'] == true
+            ? pinCheck['message']
+            : 'PIN lama yang dimasukkan tidak sesuai!',
       };
     }
-    if (!verifySecurityNames(name1: securityName1, name2: securityName2)) {
+    final recoveryCheck = await verifySecurityNamesDetailed(
+      name1: securityName1,
+      name2: securityName2,
+    );
+    if (recoveryCheck['success'] != true) {
       return {
         'success': false,
-        'message': 'Nama Keamanan 1 atau Nama Keamanan 2 tidak sesuai!',
+        'message': recoveryCheck['message'],
       };
     }
-    if (cleanNew.isEmpty) {
-      return {'success': false, 'message': 'PIN baru wajib diisi!'};
-    }
-    if (cleanNew != cleanConfirm) {
-      return {
-        'success': false,
-        'message': 'PIN baru dan Konfirmasi PIN baru harus sama!',
-      };
+    final newPinError = _validateNewPin(cleanNew, cleanConfirm, isNew: true);
+    if (newPinError != null) {
+      return {'success': false, 'message': newPinError};
     }
 
-    _securityPin = cleanNew;
+    _securityPinHash = SecurityCrypto.hashSecret(cleanNew);
     dataChangedNotifier.value++;
     await _persistLocalData();
     return {
@@ -261,16 +516,24 @@ class ApiService {
     required String securityName1,
     required String securityName2,
   }) async {
-    if (oldPin.trim().isEmpty || oldPin.trim() != _securityPin) {
+    final pinCheck =
+        await verifySecurityPinDetailed(oldPin.trim(), unlockSession: false);
+    if (pinCheck['success'] != true) {
       return {
         'success': false,
-        'message': 'PIN lama yang dimasukkan tidak sesuai!',
+        'message': pinCheck['lockedOut'] == true
+            ? pinCheck['message']
+            : 'PIN lama yang dimasukkan tidak sesuai!',
       };
     }
-    if (!verifySecurityNames(name1: securityName1, name2: securityName2)) {
+    final recoveryCheck = await verifySecurityNamesDetailed(
+      name1: securityName1,
+      name2: securityName2,
+    );
+    if (recoveryCheck['success'] != true) {
       return {
         'success': false,
-        'message': 'Nama Keamanan 1 atau Nama Keamanan 2 tidak sesuai!',
+        'message': recoveryCheck['message'],
       };
     }
     await clearSecurityPin();
@@ -288,14 +551,14 @@ class ApiService {
   }) {
     final c1 = lastChar1.trim().toLowerCase();
     final c2 = lastChar2.trim().toLowerCase();
-    final stored1 = _securityName1.trim().toLowerCase();
-    final stored2 = _securityName2.trim().toLowerCase();
-    if (c1.length != 1 || c2.length != 1 || stored1.isEmpty || stored2.isEmpty) {
+    if (c1.length != 1 ||
+        c2.length != 1 ||
+        _securityLastChar1Hash.isEmpty ||
+        _securityLastChar2Hash.isEmpty) {
       return false;
     }
-    final expectedLast1 = stored1.substring(stored1.length - 1);
-    final expectedLast2 = stored2.substring(stored2.length - 1);
-    return c1 == expectedLast1 && c2 == expectedLast2;
+    return _verifyStoredSecret(c1, _securityLastChar1Hash) &&
+        _verifyStoredSecret(c2, _securityLastChar2Hash);
   }
 
   /// Ganti kedua Nama Keamanan secara serentak dengan syarat:
@@ -315,16 +578,30 @@ class ApiService {
     final cleanName1 = newSecurityName1.trim();
     final cleanName2 = newSecurityName2.trim();
 
-    if (_securityPin.isEmpty || _securityName1.isEmpty || _securityName2.isEmpty) {
+    if (_securityPinHash.isEmpty ||
+        _securityName1Hash.isEmpty ||
+        _securityName2Hash.isEmpty) {
       return {
         'success': false,
         'message': 'PIN belum diatur. Atur PIN Keamanan terlebih dahulu!',
       };
     }
-    if (cleanPin.isEmpty || cleanPin != _securityPin) {
+    final pinCheck =
+        await verifySecurityPinDetailed(cleanPin, unlockSession: false);
+    if (pinCheck['success'] != true) {
       return {
         'success': false,
-        'message': 'PIN saat ini yang dimasukkan tidak sesuai!',
+        'message': pinCheck['lockedOut'] == true
+            ? pinCheck['message']
+            : 'PIN saat ini yang dimasukkan tidak sesuai!',
+      };
+    }
+    final recoveryCooldown = getRemainingRecoveryLockoutSeconds();
+    if (recoveryCooldown > 0) {
+      return {
+        'success': false,
+        'message':
+            'Terlalu banyak percobaan Nama Keamanan salah. Tunggu $recoveryCooldown detik.',
       };
     }
     if (cleanLast1.length != 1 || cleanLast2.length != 1) {
@@ -335,12 +612,19 @@ class ApiService {
       };
     }
     if (!verifySecurityNamesLastChar(lastChar1: cleanLast1, lastChar2: cleanLast2)) {
+      _recoveryFailedAttempts++;
+      if (_recoveryFailedAttempts >= maxFailedAttempts) {
+        _recoveryLockoutUntil = DateTime.now().toUtc().add(lockoutDuration);
+      }
+      await _persistSecurityRateLimit();
       return {
         'success': false,
         'message':
             '1 karakter terakhir dari Nama Keamanan 1 atau Nama Keamanan 2 saat ini tidak sesuai!',
       };
     }
+    _recoveryFailedAttempts = 0;
+    _recoveryLockoutUntil = null;
     if (cleanName1.isEmpty || cleanName2.isEmpty) {
       return {
         'success': false,
@@ -356,8 +640,7 @@ class ApiService {
       };
     }
 
-    _securityName1 = cleanName1;
-    _securityName2 = cleanName2;
+    _storeHashedSecurityNames(cleanName1, cleanName2);
     dataChangedNotifier.value++;
     await _persistLocalData();
     return {
@@ -374,27 +657,28 @@ class ApiService {
     String? newPin,
     String? confirmPin,
   }) async {
-    if (!verifySecurityNames(name1: name1, name2: name2)) {
+    final recoveryCheck = await verifySecurityNamesDetailed(
+      name1: name1,
+      name2: name2,
+    );
+    if (recoveryCheck['success'] != true) {
       return {
         'success': false,
-        'message': 'Nama Keamanan 1 atau Nama Keamanan 2 tidak sesuai!',
+        'message': recoveryCheck['message'],
       };
     }
     final cleanNew = (newPin ?? '').trim();
     final cleanConfirm = (confirmPin ?? '').trim();
     if (cleanNew.isNotEmpty || cleanConfirm.isNotEmpty) {
-      if (cleanNew.isEmpty) {
-        return {'success': false, 'message': 'PIN baru wajib diisi!'};
+      final newPinError = _validateNewPin(cleanNew, cleanConfirm, isNew: true);
+      if (newPinError != null) {
+        return {'success': false, 'message': newPinError};
       }
-      if (cleanNew != cleanConfirm) {
-        return {
-          'success': false,
-          'message': 'PIN baru dan Konfirmasi PIN baru harus sama!',
-        };
-      }
-      _securityPin = cleanNew;
-      await _persistLocalData();
+      _securityPinHash = SecurityCrypto.hashSecret(cleanNew);
     }
+    _pinFailedAttempts = 0;
+    _pinLockoutUntil = null;
+    await _persistLocalData();
     authStateNotifier.value = true;
     dataChangedNotifier.value++;
     return {
@@ -482,9 +766,82 @@ class ApiService {
       _transactionsResetAt =
           resetAtRaw != null ? DateTime.tryParse(resetAtRaw)?.toUtc() : null;
       offlineModeNotifier.value = true;
-      _securityPin = (prefs.getString(_kSecurityPinKey) ?? '').trim();
-      _securityName1 = (prefs.getString(_kSecurityName1Key) ?? '').trim();
-      _securityName2 = (prefs.getString(_kSecurityName2Key) ?? '').trim();
+      var migratedLegacySecrets = false;
+
+      final rawPin = (prefs.getString(_kSecurityPinKey) ?? '').trim();
+      final rawName1 = (prefs.getString(_kSecurityName1Key) ?? '').trim();
+      final rawName2 = (prefs.getString(_kSecurityName2Key) ?? '').trim();
+      var rawLast1 = (prefs.getString(_kSecurityLastChar1Key) ?? '').trim();
+      var rawLast2 = (prefs.getString(_kSecurityLastChar2Key) ?? '').trim();
+
+      if (rawPin.isNotEmpty && !SecurityCrypto.isHashed(rawPin)) {
+        _securityPinHash = SecurityCrypto.hashSecret(rawPin);
+        migratedLegacySecrets = true;
+      } else {
+        _securityPinHash = rawPin;
+      }
+
+      if (rawName1.isNotEmpty && !SecurityCrypto.isHashed(rawName1)) {
+        final lower1 = rawName1.toLowerCase();
+        _securityName1Hash = SecurityCrypto.hashSecret(lower1);
+        if (rawLast1.isEmpty) {
+          rawLast1 =
+              SecurityCrypto.hashSecret(lower1.substring(lower1.length - 1));
+        }
+        migratedLegacySecrets = true;
+      } else {
+        _securityName1Hash = rawName1;
+      }
+
+      if (rawName2.isNotEmpty && !SecurityCrypto.isHashed(rawName2)) {
+        final lower2 = rawName2.toLowerCase();
+        _securityName2Hash = SecurityCrypto.hashSecret(lower2);
+        if (rawLast2.isEmpty) {
+          rawLast2 =
+              SecurityCrypto.hashSecret(lower2.substring(lower2.length - 1));
+        }
+        migratedLegacySecrets = true;
+      } else {
+        _securityName2Hash = rawName2;
+      }
+
+      if (rawLast1.isNotEmpty && !SecurityCrypto.isHashed(rawLast1)) {
+        _securityLastChar1Hash = SecurityCrypto.hashSecret(rawLast1.toLowerCase());
+        migratedLegacySecrets = true;
+      } else {
+        _securityLastChar1Hash = rawLast1;
+      }
+
+      if (rawLast2.isNotEmpty && !SecurityCrypto.isHashed(rawLast2)) {
+        _securityLastChar2Hash = SecurityCrypto.hashSecret(rawLast2.toLowerCase());
+        migratedLegacySecrets = true;
+      } else {
+        _securityLastChar2Hash = rawLast2;
+      }
+
+      for (final u in _localUsers) {
+        final pw = u['password']?.toString() ?? '';
+        if (pw.isNotEmpty && !SecurityCrypto.isHashed(pw)) {
+          u['password'] = SecurityCrypto.hashSecret(pw);
+          migratedLegacySecrets = true;
+        }
+      }
+
+      _pinFailedAttempts = prefs.getInt(_kPinFailedAttemptsKey) ?? 0;
+      final pinLockRaw = prefs.getString(_kPinLockoutUntilKey);
+      _pinLockoutUntil =
+          pinLockRaw != null ? DateTime.tryParse(pinLockRaw)?.toUtc() : null;
+      _recoveryFailedAttempts = prefs.getInt(_kRecoveryFailedAttemptsKey) ?? 0;
+      final recoveryLockRaw = prefs.getString(_kRecoveryLockoutUntilKey);
+      _recoveryLockoutUntil = recoveryLockRaw != null
+          ? DateTime.tryParse(recoveryLockRaw)?.toUtc()
+          : null;
+      getRemainingPinLockoutSeconds();
+      getRemainingRecoveryLockoutSeconds();
+
+      if (migratedLegacySecrets) {
+        await _persistLocalData();
+      }
 
       final savedUserRaw = prefs.getString(_kAuthUserKey);
       if (savedUserRaw != null && savedUserRaw.isNotEmpty) {
@@ -503,7 +860,7 @@ class ApiService {
 
       // Jika user mengatur PIN keamanan, kunci aplikasi saat pertama dibuka;
       // jika tidak ada PIN keamanan, langsung masuk ke aplikasi (tanpa login password).
-      authStateNotifier.value = _securityPin.isEmpty;
+      authStateNotifier.value = _securityPinHash.isEmpty;
 
       final savedStoreName = prefs.getString('store_name');
       final savedStoreCategory = prefs.getString('store_category');
@@ -542,9 +899,29 @@ class ApiService {
       await prefs.setString(_kUsersKey, jsonEncode(_localUsers));
       await prefs.setStringList(_kDeletedProductsKey, _deletedProductKeys.toList());
       await prefs.setBool(_kOfflineModeKey, offlineModeNotifier.value);
-      await prefs.setString(_kSecurityPinKey, _securityPin);
-      await prefs.setString(_kSecurityName1Key, _securityName1);
-      await prefs.setString(_kSecurityName2Key, _securityName2);
+      await prefs.setString(_kSecurityPinKey, _securityPinHash);
+      await prefs.setString(_kSecurityName1Key, _securityName1Hash);
+      await prefs.setString(_kSecurityName2Key, _securityName2Hash);
+      await prefs.setString(_kSecurityLastChar1Key, _securityLastChar1Hash);
+      await prefs.setString(_kSecurityLastChar2Key, _securityLastChar2Hash);
+      await prefs.setInt(_kPinFailedAttemptsKey, _pinFailedAttempts);
+      if (_pinLockoutUntil != null) {
+        await prefs.setString(
+          _kPinLockoutUntilKey,
+          _pinLockoutUntil!.toUtc().toIso8601String(),
+        );
+      } else {
+        await prefs.remove(_kPinLockoutUntilKey);
+      }
+      await prefs.setInt(_kRecoveryFailedAttemptsKey, _recoveryFailedAttempts);
+      if (_recoveryLockoutUntil != null) {
+        await prefs.setString(
+          _kRecoveryLockoutUntilKey,
+          _recoveryLockoutUntil!.toUtc().toIso8601String(),
+        );
+      } else {
+        await prefs.remove(_kRecoveryLockoutUntilKey);
+      }
       await prefs.setInt(_kTransactionsResetMaxIdKey, _transactionsResetMaxId);
       if (_transactionsResetAt != null) {
         await prefs.setString(
@@ -578,9 +955,15 @@ class ApiService {
     _transactionsResetMaxId = 0;
     _lastFetchedMaxServerTxId = 0;
     _transactionsResetAt = null;
-    _securityPin = '';
-    _securityName1 = '';
-    _securityName2 = '';
+    _securityPinHash = '';
+    _securityName1Hash = '';
+    _securityName2Hash = '';
+    _securityLastChar1Hash = '';
+    _securityLastChar2Hash = '';
+    _pinFailedAttempts = 0;
+    _pinLockoutUntil = null;
+    _recoveryFailedAttempts = 0;
+    _recoveryLockoutUntil = null;
     offlineModeNotifier.value = true;
     ApiConfig.token = null;
     userNotifier.value = null;
@@ -604,10 +987,16 @@ class ApiService {
     _lastFetchedMaxServerTxId = 0;
     _transactionsResetAt = null;
     if (!keepSecurityPin) {
-      _securityPin = '';
-      _securityName1 = '';
-      _securityName2 = '';
+      _securityPinHash = '';
+      _securityName1Hash = '';
+      _securityName2Hash = '';
+      _securityLastChar1Hash = '';
+      _securityLastChar2Hash = '';
     }
+    _pinFailedAttempts = 0;
+    _pinLockoutUntil = null;
+    _recoveryFailedAttempts = 0;
+    _recoveryLockoutUntil = null;
     offlineModeNotifier.value = true;
     ApiConfig.token = null;
     userNotifier.value = null;
@@ -848,7 +1237,7 @@ class ApiService {
     Map<String, dynamic> localUser;
     if (existingIdx != -1) {
       final storedPass = _localUsers[existingIdx]['password']?.toString() ?? '';
-      if (storedPass.isNotEmpty && storedPass != password) {
+      if (storedPass.isNotEmpty && !_verifyStoredSecret(password, storedPass)) {
         const msg = 'Password tidak sesuai dengan akun yang terdaftar di perangkat.';
         lastErrorNotifier.value = msg;
         return {'success': false, 'message': msg};
@@ -858,7 +1247,7 @@ class ApiService {
       localUser = _buildOfflineUser(email: trimmedEmail);
       _localUsers.add({
         ...localUser,
-        'password': password,
+        'password': password.isEmpty ? '' : SecurityCrypto.hashSecret(password),
       });
     }
 
@@ -938,7 +1327,7 @@ class ApiService {
     );
     _localUsers.add({
       ...localUser,
-      'password': password,
+      'password': password.isEmpty ? '' : SecurityCrypto.hashSecret(password),
       if (address != null) 'address': address.trim(),
       if (phone != null) 'phone': phone.trim(),
     });
@@ -2458,7 +2847,16 @@ class ApiService {
   /// Menggunakan header `sep=,` dan CRLF agar Excel di Windows otomatis memisah kolom ke sel berbeda.
   static String buildTransactionsExportCsv(List<Map<String, dynamic>> transactions) {
     String csvEscape(dynamic val) {
-      final s = (val ?? '').toString().replaceAll('"', '""');
+      final raw = (val ?? '').toString();
+      final trimmedStart = raw.trimLeft();
+      final startsWithUnsafeChar =
+          raw.isNotEmpty && '=+-@\t\r'.contains(raw[0]);
+      final startsWithFormulaAfterSpaces =
+          trimmedStart.isNotEmpty && '=+-@'.contains(trimmedStart[0]);
+      final safe = (startsWithUnsafeChar || startsWithFormulaAfterSpaces)
+          ? "'$raw"
+          : raw;
+      final s = safe.replaceAll('"', '""');
       return '"$s"';
     }
 
