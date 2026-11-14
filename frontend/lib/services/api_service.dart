@@ -18,6 +18,58 @@ class ApiService {
   // Mode 100% Offline: true secara bawaan agar APK langsung berjalan di perangkat tanpa butuh server
   static final ValueNotifier<bool> offlineModeNotifier = ValueNotifier<bool>(true);
 
+  static const String defaultStoreName = 'Nama Toko Anda';
+  static const String defaultStoreCategory = 'Kategori Toko \u2022 UMKM';
+  static final ValueNotifier<String> storeNameNotifier =
+      ValueNotifier<String>(defaultStoreName);
+  static final ValueNotifier<String> storeCategoryNotifier =
+      ValueNotifier<String>(defaultStoreCategory);
+
+  /// Muat identitas toko (nama & kategori) dari SharedPreferences dan sinkronkan ke semua tab.
+  static Future<void> loadStoreProfile() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final name = prefs.getString('store_name');
+      final cat = prefs.getString('store_category');
+      storeNameNotifier.value =
+          (name != null && name.trim().isNotEmpty) ? name.trim() : defaultStoreName;
+      storeCategoryNotifier.value =
+          (cat != null && cat.trim().isNotEmpty) ? cat.trim() : defaultStoreCategory;
+    } catch (_) {}
+  }
+
+  /// Perbarui identitas toko dan langsung sinkronkan ke semua tab melalui ValueNotifier.
+  static Future<void> updateStoreProfile({
+    required String storeName,
+    String? storeCategory,
+  }) async {
+    final trimmedName = storeName.trim();
+    if (trimmedName.isEmpty) return;
+    final trimmedCat = storeCategory?.trim() ?? '';
+
+    storeNameNotifier.value = trimmedName;
+    if (trimmedCat.isNotEmpty) {
+      storeCategoryNotifier.value = trimmedCat;
+    }
+
+    if (userNotifier.value != null) {
+      final updatedUser = Map<String, dynamic>.from(userNotifier.value!);
+      updatedUser['business_name'] = trimmedName;
+      userNotifier.value = updatedUser;
+    }
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('store_name', trimmedName);
+      if (trimmedCat.isNotEmpty) {
+        await prefs.setString('store_category', trimmedCat);
+      }
+    } catch (_) {}
+
+    dataChangedNotifier.value++;
+    await _persistLocalData();
+  }
+
   /// Token tidak lagi valid (respons 401) -> jika sedang mode online murni dan bukan token lokal,
   /// baru kembali ke halaman login. Saat offline mode, sesi lokal tetap dipertahankan.
   static void _handleUnauthorized() {
@@ -453,6 +505,17 @@ class ApiService {
       // jika tidak ada PIN keamanan, langsung masuk ke aplikasi (tanpa login password).
       authStateNotifier.value = _securityPin.isEmpty;
 
+      final savedStoreName = prefs.getString('store_name');
+      final savedStoreCategory = prefs.getString('store_category');
+      storeNameNotifier.value =
+          (savedStoreName != null && savedStoreName.trim().isNotEmpty)
+              ? savedStoreName.trim()
+              : defaultStoreName;
+      storeCategoryNotifier.value =
+          (savedStoreCategory != null && savedStoreCategory.trim().isNotEmpty)
+              ? savedStoreCategory.trim()
+              : defaultStoreCategory;
+
       await CartService.loadLocalCart();
     } catch (_) {
       // Penyimpanan tidak tersedia (mis. saat widget test) -> pakai data memori saja.
@@ -522,6 +585,8 @@ class ApiService {
     ApiConfig.token = null;
     userNotifier.value = null;
     authStateNotifier.value = true;
+    storeNameNotifier.value = defaultStoreName;
+    storeCategoryNotifier.value = defaultStoreCategory;
     CartService.clear();
     dataChangedNotifier.value++;
     _persistLocalData(); // bersihkan juga salinan tersimpan di perangkat
@@ -547,6 +612,8 @@ class ApiService {
     ApiConfig.token = null;
     userNotifier.value = null;
     authStateNotifier.value = true;
+    storeNameNotifier.value = defaultStoreName;
+    storeCategoryNotifier.value = defaultStoreCategory;
     CartService.clear();
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -702,9 +769,11 @@ class ApiService {
     lastErrorNotifier.value = null;
 
     if (storeName != null && storeName.trim().isNotEmpty) {
+      final trimmed = storeName.trim();
+      storeNameNotifier.value = trimmed;
       try {
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('store_name', storeName.trim());
+        await prefs.setString('store_name', trimmed);
       } catch (_) {}
     }
 
@@ -875,6 +944,7 @@ class ApiService {
     });
 
     if (trimmedBusiness.isNotEmpty) {
+      storeNameNotifier.value = trimmedBusiness;
       try {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('store_name', trimmedBusiness);

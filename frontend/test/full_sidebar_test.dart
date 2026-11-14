@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:majunih/services/api_service.dart';
 import 'package:majunih/services/cart_service.dart';
 import 'package:majunih/widgets/full_sidebar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -8,6 +9,7 @@ void main() {
   testWidgets('FullSidebar renders full width, column items and badge',
       (WidgetTester tester) async {
     SharedPreferences.setMockInitialValues({});
+    ApiService.resetAllData();
     CartService.clear();
     int selected = 0;
 
@@ -57,5 +59,10 @@ void main() {
     // Tap 'Transaksi'
     await tester.tap(find.text('Transaksi'));
     expect(selected, 3);
+
+    // Updating store name reflects reactively in FullSidebar
+    await ApiService.updateStoreProfile(storeName: 'Toko Sidebar Baru');
+    await tester.pumpAndSettle();
+    expect(find.text('Toko Sidebar Baru'), findsOneWidget);
   });
 }

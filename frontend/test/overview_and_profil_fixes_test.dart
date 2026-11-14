@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:majunih/mobile_shell.dart';
 import 'package:majunih/pages/dashboard_page.dart';
 import 'package:majunih/pages/profil_page.dart';
 import 'package:majunih/services/api_service.dart';
@@ -98,5 +99,54 @@ void main() {
     // Verify it is saved in SharedPreferences
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getString('store_name'), 'Toko Berkah Mandiri');
+  });
+
+  testWidgets('Mengubah nama toko di Profil langsung memperbarui nama toko di tab Keranjang dan Transaksi',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 1400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: MobileShell(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Cek awal di tab Keranjang (index 2) & Transaksi (index 3) menggunakan default sinkron
+    NavigationService.navigateTo(2);
+    await tester.pumpAndSettle();
+    expect(find.text('Nama Toko Anda'), findsWidgets);
+
+    NavigationService.navigateTo(3);
+    await tester.pumpAndSettle();
+    expect(find.text('Nama Toko Anda'), findsWidgets);
+
+    // Buka tab Profil (index 4) dan ubah nama toko
+    NavigationService.navigateTo(4);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.edit_outlined));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField).first, 'Toko Rejeki Makmur');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Simpan'));
+    await tester.pumpAndSettle();
+
+    // Pastikan tab Keranjang & Transaksi ikut berubah langsung
+    NavigationService.navigateTo(2);
+    await tester.pumpAndSettle();
+    expect(find.text('Toko Rejeki Makmur'), findsWidgets);
+    expect(find.text('Warung Maju Jaya'), findsNothing);
+
+    NavigationService.navigateTo(3);
+    await tester.pumpAndSettle();
+    expect(find.text('Toko Rejeki Makmur'), findsWidgets);
+    expect(find.text('Warung Maju Jaya'), findsNothing);
   });
 }

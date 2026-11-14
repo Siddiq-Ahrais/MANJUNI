@@ -1,6 +1,0 @@
-sep=,
-id_transaksi,waktu_transaksi,jenis_pembayaran,nama_produk,qty,harga_satuan_idr,total_transaksi_idr
-"TRX-03","2026-11-14 15:26","Tunai","p",1,100000,158000
-"TRX-03","2026-11-14 15:26","Tunai","phr",4,14500,158000
-"TRX-02","2026-11-14 15:15","Tunai","phr",6,14500,87000
-"TRX-01","2026-11-14 15:15","Tunai","p",9,100000,900000

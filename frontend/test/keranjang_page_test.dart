@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:majunih/pages/keranjang_page.dart';
+import 'package:majunih/services/api_service.dart';
 import 'package:majunih/services/cart_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
+    ApiService.resetAllData();
     CartService.clear();
   });
 
@@ -21,7 +23,7 @@ void main() {
 
     // Verify header
     expect(find.text('Keranjang'), findsOneWidget);
-    expect(find.text('Warung Maju Jaya'), findsOneWidget);
+    expect(find.text('Nama Toko Anda'), findsOneWidget);
 
     // Verify empty state card
     expect(find.text('Keranjang Masih Kosong'), findsOneWidget);

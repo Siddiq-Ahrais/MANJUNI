@@ -3,7 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../services/api_service.dart';
 
 /// Dialog pembayaran QRIS dengan 2 metode:
 /// 1. GENERATE: Menampilkan QR Code QRIS dinamis & Barcode 1D untuk discan pelanggan.
@@ -62,8 +62,7 @@ class _QrisPaymentDialogState extends State<QrisPaymentDialog>
   // Generate Mode state
   bool _useBarcode1D = false; // false = QR 2D, true = Barcode 1D
   late final String _invoiceNumber;
-  late final String _qrisPayload;
-  String _storeName = 'Warung Maju Jaya';
+  String _storeName = ApiService.defaultStoreName;
   int _countdownSeconds = 300; // 5 menit
   Timer? _countdownTimer;
   Timer? _closeTimer;
@@ -87,16 +86,9 @@ class _QrisPaymentDialogState extends State<QrisPaymentDialog>
     final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
     final randomSuffix = (1000 + (DateTime.now().microsecond % 9000)).toString();
     _invoiceNumber = 'INV-${timestamp.substring(timestamp.length - 6)}-$randomSuffix';
-    
-    // Format standar QRIS Nasional (EMVCo format dinamis)
-    _qrisPayload =
-        '00020101021226580016ID.CO.QRIS.WWW011893600812849102480215ID10200234050303UMI'
-        '51440014ID.LINKAJA.WWW011893600911002233440215'
-        '520454115303360540${widget.totalAmount.toString().length}${widget.totalAmount}'
-        '5802ID5916WARUNG MAJU JAYA6007JAKARTA62${_invoiceNumber.length + 4}01${_invoiceNumber.length}$_invoiceNumber'
-        '6304ABCD';
-
-    _loadStoreName();
+    _storeName = ApiService.storeNameNotifier.value;
+    ApiService.storeNameNotifier.addListener(_onStoreNameChanged);
+    ApiService.loadStoreProfile();
     _startCountdown();
 
     // Laser Animation for Scanner Viewfinder
@@ -109,14 +101,22 @@ class _QrisPaymentDialogState extends State<QrisPaymentDialog>
     );
   }
 
-  Future<void> _loadStoreName() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final name = prefs.getString('store_name');
-      if (name != null && name.trim().isNotEmpty && mounted) {
-        setState(() => _storeName = name.trim());
-      }
-    } catch (_) {}
+  String get _qrisPayload {
+    final merchantRaw = _storeName.trim().isEmpty
+        ? ApiService.defaultStoreName.toUpperCase()
+        : _storeName.trim().toUpperCase();
+    final merchant = merchantRaw.length > 25 ? merchantRaw.substring(0, 25) : merchantRaw;
+    final merchantLen = merchant.length.toString().padLeft(2, '0');
+    return '00020101021226580016ID.CO.QRIS.WWW011893600812849102480215ID10200234050303UMI'
+        '51440014ID.LINKAJA.WWW011893600911002233440215'
+        '520454115303360540${widget.totalAmount.toString().length}${widget.totalAmount}'
+        '5802ID59$merchantLen${merchant}6007JAKARTA62${_invoiceNumber.length + 4}01${_invoiceNumber.length}$_invoiceNumber'
+        '6304ABCD';
+  }
+
+  void _onStoreNameChanged() {
+    if (!mounted) return;
+    setState(() => _storeName = ApiService.storeNameNotifier.value);
   }
 
   void _startCountdown() {
@@ -132,6 +132,7 @@ class _QrisPaymentDialogState extends State<QrisPaymentDialog>
 
   @override
   void dispose() {
+    ApiService.storeNameNotifier.removeListener(_onStoreNameChanged);
     _countdownTimer?.cancel();
     _closeTimer?.cancel();
     _laserAnimController.dispose();
@@ -453,35 +454,42 @@ class _QrisPaymentDialogState extends State<QrisPaymentDialog>
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF1E874B),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: const Text(
-                          'QRIS',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 1,
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1E874B),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            'QRIS',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1,
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        _storeName,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF111827),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _storeName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF111827),
+                            ),
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
+                  const SizedBox(width: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(

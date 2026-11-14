@@ -3,7 +3,6 @@ import 'dart:io' show Directory, File, Platform;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import '../services/cart_service.dart';
 
@@ -18,11 +17,11 @@ class _ProfilPageState extends State<ProfilPage> {
   static const Color kGreen = Color(0xFF1E874B);
   int _productCount = 0;
   int _transactionCount = 0;
-  String _storeName = 'Nama Toko Anda';
-  String _storeCategory = 'Kategori Toko \u2022 UMKM';
+  String _storeName = ApiService.defaultStoreName;
+  String _storeCategory = ApiService.defaultStoreCategory;
 
   String get _storeInitials {
-    if (_storeName == 'Nama Toko Anda' || _storeName == 'Warung Maju Jaya') {
+    if (_storeName == ApiService.defaultStoreName || _storeName == 'Warung Maju Jaya') {
       return 'MJ';
     }
     final words = _storeName.trim().split(RegExp(r'\s+'));
@@ -36,37 +35,42 @@ class _ProfilPageState extends State<ProfilPage> {
   @override
   void initState() {
     super.initState();
+    _storeName = ApiService.storeNameNotifier.value;
+    _storeCategory = ApiService.storeCategoryNotifier.value;
     _loadStoreInfo();
     _loadStats();
+    ApiService.storeNameNotifier.addListener(_onStoreChanged);
+    ApiService.storeCategoryNotifier.addListener(_onStoreChanged);
     ApiService.dataChangedNotifier.addListener(_onDataChanged);
   }
 
   Future<void> _loadStoreInfo() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final name = prefs.getString('store_name');
-      final cat = prefs.getString('store_category');
-      if (!mounted) return;
-      setState(() {
-        _storeName = (name != null && name.trim().isNotEmpty)
-            ? name.trim()
-            : 'Nama Toko Anda';
-        _storeCategory = (cat != null && cat.trim().isNotEmpty)
-            ? cat.trim()
-            : 'Kategori Toko \u2022 UMKM';
-      });
-    } catch (_) {}
+    await ApiService.loadStoreProfile();
+    if (!mounted) return;
+    setState(() {
+      _storeName = ApiService.storeNameNotifier.value;
+      _storeCategory = ApiService.storeCategoryNotifier.value;
+    });
   }
 
   @override
   void dispose() {
+    ApiService.storeNameNotifier.removeListener(_onStoreChanged);
+    ApiService.storeCategoryNotifier.removeListener(_onStoreChanged);
     ApiService.dataChangedNotifier.removeListener(_onDataChanged);
     super.dispose();
   }
 
+  void _onStoreChanged() {
+    if (!mounted) return;
+    setState(() {
+      _storeName = ApiService.storeNameNotifier.value;
+      _storeCategory = ApiService.storeCategoryNotifier.value;
+    });
+  }
+
   void _onDataChanged() {
     if (mounted) {
-      _loadStoreInfo();
       _loadStats();
     }
   }
@@ -413,24 +417,16 @@ class _ProfilPageState extends State<ProfilPage> {
                           final newName = nameCtrl.text.trim();
                           final newCat = categoryCtrl.text.trim();
                           if (newName.isNotEmpty) {
-                            setState(() {
-                              _storeName = newName;
-                              if (newCat.isNotEmpty) {
-                                _storeCategory = newCat;
-                              }
-                            });
-                            final prefs = await SharedPreferences.getInstance();
-                            await prefs.setString('store_name', newName);
-                            if (newCat.isNotEmpty) {
-                              await prefs.setString('store_category', newCat);
-                            }
-                            ApiService.dataChangedNotifier.value++;
+                            await ApiService.updateStoreProfile(
+                              storeName: newName,
+                              storeCategory: newCat.isNotEmpty ? newCat : null,
+                            );
                           }
                           if (ctx.mounted) Navigator.pop(ctx);
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text('Nama toko berhasil diperbarui: $_storeName'),
+                                content: Text('Nama toko berhasil diperbarui: ${ApiService.storeNameNotifier.value}'),
                                 backgroundColor: kGreen,
                                 behavior: SnackBarBehavior.floating,
                               ),
@@ -2051,48 +2047,54 @@ class _ProfilPageState extends State<ProfilPage> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        GestureDetector(
-          onTap: _showEditStoreDialog,
-          behavior: HitTestBehavior.opaque,
-          child: Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: const BoxDecoration(
-                  color: Color(0xFFE8F5E9),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.person_outline_rounded,
-                  color: kGreen,
-                  size: 22,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Profil',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF111827),
-                    ),
+        Expanded(
+          child: GestureDetector(
+            onTap: _showEditStoreDialog,
+            behavior: HitTestBehavior.opaque,
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFE8F5E9),
+                    shape: BoxShape.circle,
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    _storeName,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey,
-                      fontWeight: FontWeight.w500,
-                    ),
+                  child: const Icon(
+                    Icons.person_outline_rounded,
+                    color: kGreen,
+                    size: 22,
                   ),
-                ],
-              ),
-            ],
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Profil',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF111827),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        _storeName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ],

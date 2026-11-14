@@ -23,7 +23,7 @@ void main() {
 
     // Verify header
     expect(find.text('Transaksi'), findsOneWidget);
-    expect(find.text('Warung Maju Jaya'), findsOneWidget);
+    expect(find.text('Nama Toko Anda'), findsOneWidget);
 
     // Verify Omzet Hari Ini is Rp0
     expect(find.text('Omzet Hari Ini'), findsOneWidget);
