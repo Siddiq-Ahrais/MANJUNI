@@ -780,28 +780,6 @@ class _KeranjangPageState extends State<KeranjangPage> {
               ),
             ],
           ),
-          const SizedBox(height: 6),
-          const Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Diskon',
-                style: TextStyle(
-                  fontSize: 13.5,
-                  color: Color(0xFF1F2937),
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              Text(
-                'Rp0',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Color(0xFF1F2937),
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 10),
             child: Divider(color: Color(0xFF81C784), height: 1),

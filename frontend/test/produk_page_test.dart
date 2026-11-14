@@ -278,10 +278,20 @@ void main() {
     await tester.tap(tambahBtn);
     await tester.pumpAndSettle();
 
-    // Verifikasi opsi satuan kg, liter, gram tersedia
+    // Verifikasi opsi satuan kg, liter, ml, gram tersedia
     expect(find.widgetWithText(ChoiceChip, 'kg'), findsOneWidget);
     expect(find.widgetWithText(ChoiceChip, 'liter'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'ml'), findsOneWidget);
     expect(find.widgetWithText(ChoiceChip, 'gram'), findsOneWidget);
+
+    // Uji deteksi otomatis 'ml' dari input Berat / Ukuran (mis. 250ml)
+    final weightField = find.widgetWithText(TextField, 'Misal: 5kg, 500g, 250ml');
+    await tester.ensureVisible(weightField);
+    await tester.enterText(weightField, '250ml');
+    await tester.pumpAndSettle();
+    expect(find.text('/ml'), findsOneWidget);
+    expect(find.text('Modal / Produk'), findsOneWidget);
+    expect(find.text('Harga Modal / ml'), findsNothing);
 
     // Upload gambar hanya lewat Pilih File dari Perangkat
     const channel = MethodChannel('com.example.majunih/file_export');
@@ -335,6 +345,10 @@ void main() {
     final priceField = find.widgetWithText(TextField, '35000');
     await tester.ensureVisible(priceField);
     await tester.enterText(priceField, '14000');
+    await tester.pump();
+    expect(find.text('Modal / Produk'), findsOneWidget);
+    expect(find.text('Harga Modal / kg'), findsNothing);
+    expect(find.text('HPP / Produk: Rp11.000'), findsOneWidget);
 
     final simpanBtn = find.text('Simpan Produk');
     await tester.ensureVisible(simpanBtn);
@@ -342,9 +356,9 @@ void main() {
     await tester.tap(simpanBtn);
     await tester.pumpAndSettle();
 
-    // Produk tampil dengan satuan kg & modal
+    // Produk tampil dengan satuan kg & modal per produk
     expect(find.text('Beras Rojolele'), findsOneWidget);
-    expect(find.text('Modal: Rp11.000 / kg'), findsOneWidget);
+    expect(find.text('Modal: Rp11.000 / produk'), findsOneWidget);
 
     // Tambah ke keranjang (set stok > 0 dulu atau cek produk ber-stok)
     await ApiService.addProduct(
@@ -582,5 +596,61 @@ void main() {
       find.widgetWithText(TextField, '35000'),
     );
     expect(priceTextField.focusNode?.hasFocus, isTrue);
+  });
+
+  testWidgets('Input minuman 650ml dengan satuan ml menanyakan modal per produk, bukan per ml',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: ProdukPage(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final tambahBtn = find.widgetWithText(ElevatedButton, 'Tambah Produk');
+    await tester.ensureVisible(tambahBtn);
+    await tester.pumpAndSettle();
+    await tester.tap(tambahBtn);
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Misal: Beras Ramos, Kopi ABC, dll'),
+      'Minuman 650ml',
+    );
+
+    final mlChip = find.widgetWithText(ChoiceChip, 'ml');
+    await tester.ensureVisible(mlChip);
+    await tester.pumpAndSettle();
+    await tester.tap(mlChip);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Modal / Produk'), findsOneWidget);
+    expect(find.text('Harga Modal / ml'), findsNothing);
+
+    final weightField = find.widgetWithText(TextField, 'Misal: 5kg, 500g, 250ml');
+    await tester.ensureVisible(weightField);
+    await tester.enterText(weightField, '650');
+
+    final modalField = find.widgetWithText(TextField, '28000');
+    await tester.ensureVisible(modalField);
+    await tester.enterText(modalField, '2500');
+
+    final priceField = find.widgetWithText(TextField, '35000');
+    await tester.ensureVisible(priceField);
+    await tester.enterText(priceField, '4000');
+    await tester.pump();
+
+    expect(find.text('HPP / Produk: Rp2.500'), findsOneWidget);
+
+    final simpanBtn = find.text('Simpan Produk');
+    await tester.ensureVisible(simpanBtn);
+    await tester.pumpAndSettle();
+    await tester.tap(simpanBtn);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Minuman 650ml'), findsOneWidget);
+    expect(find.text('Modal: Rp2.500 / produk'), findsOneWidget);
   });
 }

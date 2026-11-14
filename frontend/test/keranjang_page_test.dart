@@ -37,9 +37,9 @@ void main() {
     expect(find.text('QRIS'), findsOneWidget);
     expect(find.text('Kasbon'), findsOneWidget);
 
-    // Verify payment summary shows 0 items and Rp0
+    // Verify payment summary shows 0 items and Rp0 (without Diskon)
     expect(find.text('Subtotal (0 item)'), findsOneWidget);
-    expect(find.text('Diskon'), findsOneWidget);
+    expect(find.text('Diskon'), findsNothing);
     expect(find.text('Total'), findsOneWidget);
     expect(find.text('Rp0'), findsWidgets);
 

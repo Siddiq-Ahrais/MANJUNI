@@ -17,6 +17,9 @@ void main() {
     await tester.pumpWidget(const MyApp());
     await tester.pumpAndSettle();
 
+    final materialApp = tester.widget<MaterialApp>(find.byType(MaterialApp));
+    expect(materialApp.title, 'MANJUNI');
+
     // Verify initial active tab label is Overview
     expect(find.text('Overview'), findsWidgets);
 

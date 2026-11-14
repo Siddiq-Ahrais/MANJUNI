@@ -332,6 +332,7 @@ class _ProdukPageState extends State<ProdukPage> {
       'pcs',
       'kg',
       'liter',
+      'ml',
       'gram',
       'bungkus',
       'botol',
@@ -791,6 +792,9 @@ class _ProdukPageState extends State<ProdukPage> {
                                           final lower = val.toLowerCase();
                                           if (lower.contains('kg') || lower.contains('kilo')) {
                                             setDialogState(() => selectedUnit = 'kg');
+                                          } else if (lower.contains('mililiter') ||
+                                              RegExp(r'(?:^|\d|\s)ml\b').hasMatch(lower)) {
+                                            setDialogState(() => selectedUnit = 'ml');
                                           } else if (lower.contains('liter') || RegExp(r'\d+\s*l\b').hasMatch(lower)) {
                                             setDialogState(() => selectedUnit = 'liter');
                                           } else if (lower.contains('gram') || RegExp(r'\d+\s*g\b').hasMatch(lower)) {
@@ -799,7 +803,7 @@ class _ProdukPageState extends State<ProdukPage> {
                                         }
                                       },
                                       decoration: InputDecoration(
-                                        hintText: 'Misal: 5kg, 500g',
+                                        hintText: 'Misal: 5kg, 500g, 250ml',
                                         prefixIcon: const Icon(Icons.scale, color: Colors.grey, size: 16),
                                         prefixIconConstraints: const BoxConstraints(minWidth: 32, minHeight: 28),
                                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
@@ -849,7 +853,7 @@ class _ProdukPageState extends State<ProdukPage> {
 
                           const SizedBox(height: 5),
 
-                          // 4. Harga Modal / Unit, Ongkir (Opsional), & Harga Jual *
+                          // 4. Modal / Produk, Ongkir (Opsional), & Harga Jual *
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -857,9 +861,9 @@ class _ProdukPageState extends State<ProdukPage> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
-                                      'Harga Modal / $selectedUnit',
-                                      style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF374151)),
+                                    const Text(
+                                      'Modal / Produk',
+                                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF374151)),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                     ),
@@ -964,8 +968,8 @@ class _ProdukPageState extends State<ProdukPage> {
                                       Expanded(
                                         child: Text(
                                           previewShipping > 0
-                                              ? 'HPP/$selectedUnit: ${_formatRp(previewHpp)} (Modal ${_formatRp(previewBaseCost)} + Ongkir ${_formatRp(previewShippingPerUnit)})'
-                                              : 'HPP/$selectedUnit: ${_formatRp(previewHpp)}',
+                                              ? 'HPP / Produk: ${_formatRp(previewHpp)} (Modal ${_formatRp(previewBaseCost)} + Ongkir ${_formatRp(previewShippingPerUnit)})'
+                                              : 'HPP / Produk: ${_formatRp(previewHpp)}',
                                           style: const TextStyle(
                                             fontSize: 10.5,
                                             fontWeight: FontWeight.w600,
@@ -1931,7 +1935,7 @@ class _ProductCardItem extends StatelessWidget {
                         if (costPrice > 0) ...[
                           const SizedBox(height: 2),
                           Text(
-                            'Modal: ${formatRp(costPrice)} / $unit',
+                            'Modal: ${formatRp(costPrice)} / produk',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
