@@ -32,11 +32,11 @@ class _DashboardPageState extends State<DashboardPage> {
   int _carouselPage = 0;
 
   Map<String, dynamic> _stats = {
-    'omzet': 520000,
-    'total_transaksi': 18,
-    'produk_terlaris': 'Beras 5kg',
-    'stok_menipis': 3,
-    'total_produk': 48,
+    'omzet': 0,
+    'total_transaksi': 0,
+    'produk_terlaris': '-',
+    'stok_menipis': 0,
+    'total_produk': 0,
   };
 
   List<Map<String, dynamic>> _lowStockList = [];
@@ -57,10 +57,10 @@ class _DashboardPageState extends State<DashboardPage> {
   ];
 
   // Dynamic chart data per period
-  List<double> _chartFractions = [0.22, 0.35, 0.33, 0.45, 0.68, 0.55, 0.88];
-  List<int> _chartValues = [220000, 350000, 330000, 450000, 680000, 550000, 880000];
+  List<double> _chartFractions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+  List<int> _chartValues = [0, 0, 0, 0, 0, 0, 0];
   List<String> _chartDays = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
-  String _chartAvg = 'Rp480rb';
+  String _chartAvg = 'Rp0';
   String _chartTitle = 'Grafik Penjualan 7 Hari';
 
   @override

@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:majunih/services/cart_service.dart';
 import 'package:majunih/widgets/full_sidebar.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   testWidgets('FullSidebar renders full width, column items and badge',
       (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({});
+    CartService.clear();
     int selected = 0;
 
     // Add item to cart to test badge

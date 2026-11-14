@@ -85,8 +85,6 @@ class _TransaksiPageState extends State<TransaksiPage> {
     return _transactions.fold(0, (s, t) => s + ((t['amount'] as int?) ?? 0));
   }
 
-  int get _pendingCount => _transactions.where((t) => t['synced'] != true).length;
-
   void _showTransactionDetail(Map<String, dynamic> trx) {
     final String trxId = trx['id']?.toString() ?? '-';
     final int amount = (trx['amount'] as num?)?.toInt() ??
@@ -94,7 +92,6 @@ class _TransaksiPageState extends State<TransaksiPage> {
         0;
     final String method = (trx['method'] ?? trx['payment_method'] ?? 'Tunai').toString();
     final String time = trx['time']?.toString() ?? '-';
-    final bool isSynced = trx['synced'] == true;
     final List rawCartItems = trx['cartItems'] is List
         ? trx['cartItems'] as List
         : (trx['items'] is List ? trx['items'] as List : const []);
@@ -121,27 +118,7 @@ class _TransaksiPageState extends State<TransaksiPage> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('Waktu: $time', style: const TextStyle(fontSize: 13, color: Colors.grey)),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: isSynced ? const Color(0xFFDCFCE7) : const Color(0xFFFFEDD5),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      isSynced ? 'Tersinkron' : 'Menunggu sinkron',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: isSynced ? const Color(0xFF166534) : const Color(0xFF9A3412),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+              Text('Waktu: $time', style: const TextStyle(fontSize: 13, color: Colors.grey)),
               const SizedBox(height: 8),
               Text('Metode Pembayaran: $method', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
               const Divider(height: 20),
@@ -245,12 +222,6 @@ class _TransaksiPageState extends State<TransaksiPage> {
                 // Summary Cards Row
                 _buildSummaryCards(),
                 const SizedBox(height: 16),
-
-                // Sync Warning Banner (Only when there are pending transactions)
-                if (_pendingCount > 0) ...[
-                  _buildSyncBanner(),
-                  const SizedBox(height: 16),
-                ],
 
                 // Search Bar
                 _buildSearchBar(),
@@ -473,33 +444,6 @@ class _TransaksiPageState extends State<TransaksiPage> {
     );
   }
 
-  Widget _buildSyncBanner() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF3E0),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFFFE0B2), width: 1),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.sync_rounded, color: Color(0xFFD97706), size: 20),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              '$_pendingCount transaksi menunggu sinkron saat online',
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: Color(0xFF92400E),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildSearchBar() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
@@ -660,7 +604,6 @@ class _TransactionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isSynced = trx['synced'] == true;
     final String method = trx['method']?.toString() ?? 'Tunai';
     final int amount = (trx['amount'] as int?) ?? 0;
     final String trxId = trx['id']?.toString() ?? 'TRX-001';
@@ -693,7 +636,7 @@ class _TransactionCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header row: ID & status pill
+          // Header row: ID & time
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -703,25 +646,6 @@ class _TransactionCard extends StatelessWidget {
                   fontSize: 13,
                   fontWeight: FontWeight.bold,
                   color: Color(0xFF374151),
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: isSynced
-                      ? const Color(0xFFDCFCE7)
-                      : const Color(0xFFFFEDD5),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  isSynced ? 'Tersinkron' : 'Menunggu sinkron',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: isSynced
-                        ? const Color(0xFF166534)
-                        : const Color(0xFF9A3412),
-                  ),
                 ),
               ),
             ],

@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../services/cart_service.dart';
@@ -51,6 +54,83 @@ class _KeranjangPageState extends State<KeranjangPage> {
       return (match['stock'] as num).toInt();
     }
     return item.maxStock;
+  }
+
+  String _resolveProductImage(CartItem item) {
+    final direct = item.image?.trim() ?? '';
+    if (direct.isNotEmpty) return direct;
+    final match = ApiService.localProducts.firstWhere(
+      (p) {
+        final pId = p['id'];
+        if (pId != null && item.productId != null && pId.toString() == item.productId.toString()) {
+          return true;
+        }
+        return (p['name']?.toString().trim().toLowerCase() ?? '') ==
+            item.name.trim().toLowerCase();
+      },
+      orElse: () => <String, dynamic>{},
+    );
+    return (match['image'] ?? '').toString().trim();
+  }
+
+  String _resolveProductCategory(CartItem item) {
+    final direct = item.category?.trim() ?? '';
+    if (direct.isNotEmpty) return direct;
+    final match = ApiService.localProducts.firstWhere(
+      (p) {
+        final pId = p['id'];
+        if (pId != null && item.productId != null && pId.toString() == item.productId.toString()) {
+          return true;
+        }
+        return (p['name']?.toString().trim().toLowerCase() ?? '') ==
+            item.name.trim().toLowerCase();
+      },
+      orElse: () => <String, dynamic>{},
+    );
+    return (match['category'] ?? match['jenis'] ?? '').toString().trim();
+  }
+
+  Widget _buildCartProductImageWidget(
+    String imageSource, {
+    required IconData fallbackIcon,
+    required Color fallbackColor,
+  }) {
+    final src = imageSource.trim();
+    if (src.startsWith('data:image')) {
+      try {
+        final commaIdx = src.indexOf(',');
+        if (commaIdx != -1) {
+          final bytes = base64Decode(src.substring(commaIdx + 1));
+          return Image.memory(
+            bytes,
+            fit: BoxFit.cover,
+            width: double.infinity,
+            height: double.infinity,
+            errorBuilder: (_, _, _) => Icon(fallbackIcon, color: fallbackColor, size: 22),
+          );
+        }
+      } catch (_) {}
+    } else if (src.startsWith('http://') || src.startsWith('https://')) {
+      return Image.network(
+        src,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        errorBuilder: (_, _, _) => Icon(fallbackIcon, color: fallbackColor, size: 22),
+      );
+    } else if (!kIsWeb && src.isNotEmpty) {
+      final file = File(src);
+      if (file.existsSync()) {
+        return Image.file(
+          file,
+          fit: BoxFit.cover,
+          width: double.infinity,
+          height: double.infinity,
+          errorBuilder: (_, _, _) => Icon(fallbackIcon, color: fallbackColor, size: 22),
+        );
+      }
+    }
+    return Icon(fallbackIcon, color: fallbackColor, size: 22);
   }
 
   String _formatRp(int value) {
@@ -159,7 +239,6 @@ class _KeranjangPageState extends State<KeranjangPage> {
   }
 
   void _showPaymentSuccessDialog({required int total, required String method}) {
-    final isOnline = ApiService.isConnectedNotifier.value == true;
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -185,12 +264,10 @@ class _KeranjangPageState extends State<KeranjangPage> {
               style: const TextStyle(fontWeight: FontWeight.bold, color: kGreen),
             ),
             const SizedBox(height: 4),
-            Text(
-              isOnline
-                  ? 'Transaksi berhasil dicatat ke server!'
-                  : 'Transaksi tersimpan di perangkat dan disinkronkan saat online.',
+            const Text(
+              'Transaksi berhasil disimpan di perangkat.',
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
+              style: TextStyle(fontSize: 12, color: Colors.grey),
             ),
           ],
         ),
@@ -392,6 +469,26 @@ class _KeranjangPageState extends State<KeranjangPage> {
     final int? availableStock = _resolveAvailableStock(item);
     final bool overStock = availableStock != null && item.qty > availableStock;
     final bool atStockLimit = availableStock != null && item.qty >= availableStock;
+    final String image = _resolveProductImage(item);
+    final String category = _resolveProductCategory(item);
+
+    IconData iconData = Icons.inventory_2_outlined;
+    Color iconColor = const Color(0xFFD97706);
+    Color bgColor = const Color(0xFFFFE0B2);
+    final catLower = category.toLowerCase();
+    if (catLower.contains('minum') || catLower.contains('kopi') || catLower.contains('teh')) {
+      iconData = Icons.local_drink_outlined;
+      iconColor = const Color(0xFF0284C7);
+      bgColor = const Color(0xFFE0F2FE);
+    } else if (catLower.contains('makan') || catLower.contains('snack') || catLower.contains('mie')) {
+      iconData = Icons.fastfood_outlined;
+      iconColor = const Color(0xFFEA580C);
+      bgColor = const Color(0xFFFFEDD5);
+    } else if (catLower.contains('sembako') || catLower.contains('beras') || catLower.contains('minyak')) {
+      iconData = Icons.shopping_basket_outlined;
+      iconColor = const Color(0xFF16A34A);
+      bgColor = const Color(0xFFDCFCE7);
+    }
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -418,15 +515,22 @@ class _KeranjangPageState extends State<KeranjangPage> {
               Container(
                 width: 44,
                 height: 44,
+                clipBehavior: Clip.antiAlias,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFFE0B2),
+                  color: bgColor,
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(
-                  Icons.inventory_2_outlined,
-                  color: Color(0xFFD97706),
-                  size: 22,
-                ),
+                child: image.isNotEmpty
+                    ? _buildCartProductImageWidget(
+                        image,
+                        fallbackIcon: iconData,
+                        fallbackColor: iconColor,
+                      )
+                    : Icon(
+                        iconData,
+                        color: iconColor,
+                        size: 22,
+                      ),
               ),
               const SizedBox(width: 12),
               Expanded(

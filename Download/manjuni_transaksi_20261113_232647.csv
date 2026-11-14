@@ -1,4 +1,0 @@
-id_transaksi,waktu_transaksi,jenis_pembayaran,nama_produk,qty,harga_satuan_idr,total_transaksi_idr
-"TRX-09","2026-11-13T16:25:03.000000Z","QRIS","Kopi Arabika Tubruk",1,15000,29000
-"TRX-09","2026-11-13T16:25:03.000000Z","QRIS","Roti Bakar Coklat Keju",1,14000,29000
-"TRX-08","2026-11-13T16:24:43.000000Z","Kasbon","Kopi Arabika Tubruk",1,15000,15000

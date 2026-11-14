@@ -64,10 +64,11 @@ void main() {
     expect(find.text('Rp65.000'), findsWidgets);
     expect(find.text('1 Transaksi'), findsWidgets);
 
-    // Transaction item summary should be visible
+    // Transaction item summary should be visible (100% offline: no sync badge)
     expect(find.text('Beras Ramos 5kg (1x)'), findsOneWidget);
     expect(find.text('Tunai'), findsOneWidget);
-    expect(find.text('Tersinkron'), findsOneWidget);
+    expect(find.text('Tersinkron'), findsNothing);
+    expect(find.text('Menunggu sinkron'), findsNothing);
 
     // Tap transaction to open detail dialog
     await tester.tap(find.text('Beras Ramos 5kg (1x)'));

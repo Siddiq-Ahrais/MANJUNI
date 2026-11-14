@@ -22,7 +22,6 @@ class _AnalyticsViewState extends State<AnalyticsView> {
   String _selectedTrend = '7 Hari';
   int _selectedPoint = -1;
   bool _isLoading = true;
-  bool _isOffline = false;
 
   // Data dari REST API
   Map<String, dynamic> _profitLoss = {};
@@ -68,7 +67,6 @@ class _AnalyticsViewState extends State<AnalyticsView> {
       _trend30 = (trends['trend30'] as List?) ?? [];
       _trendMonthly = (trends['monthly'] as List?) ?? [];
       _topProducts = (trends['top_products'] as List?) ?? [];
-      _isOffline = _profitLoss['offline'] == true || trends['offline'] == true;
       _selectedPoint = -1;
       _isLoading = false;
     });
@@ -117,12 +115,18 @@ class _AnalyticsViewState extends State<AnalyticsView> {
   int get _revenue => _intOf(_summary['revenue']);
   int get _purchases => _intOf(_summary['operational_expenses']);
   int get _netProfit => _intOf(_summary['net_profit']);
+  int get _grossProfit => _intOf(_summary['gross_profit'], _revenue - _cogs);
   int get _trxCount => _intOf(_summary['transactions_count']);
   int get _cogs => _intOf(_summary['cogs']);
 
   double get _grossMargin {
     if (_revenue <= 0) return 0;
     return ((_revenue - _cogs) / _revenue) * 100;
+  }
+
+  double get _markupPercentage {
+    if (_cogs <= 0) return 0;
+    return ((_revenue - _cogs) / _cogs) * 100;
   }
 
   List<dynamic> get _expenseCategories =>
@@ -215,7 +219,6 @@ class _AnalyticsViewState extends State<AnalyticsView> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (_isOffline) _buildOfflineBanner(),
                   // Ringkasan periode berjalan
                   _buildStatCards(),
                   const SizedBox(height: 16),
@@ -231,30 +234,6 @@ class _AnalyticsViewState extends State<AnalyticsView> {
               ),
             ),
           );
-  }
-
-  Widget _buildOfflineBanner() {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF7ED),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFFED7AA)),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.cloud_off_rounded, size: 16, color: Color(0xFFC2410C)),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'Mode offline — statistik dihitung dari data lokal, beberapa diagram belum lengkap.',
-              style: TextStyle(fontSize: 11.5, color: Colors.grey.shade700, height: 1.3),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   // ─────────────────────────────────────────────
@@ -422,30 +401,60 @@ class _AnalyticsViewState extends State<AnalyticsView> {
               borderRadius: BorderRadius.circular(10),
               border: Border.all(color: const Color(0xFFF1F5F9)),
             ),
-            child: Row(
+            child: Column(
               children: [
-                Expanded(
-                  child: Text(
-                    'Margin Kotor: ${_grossMargin.toStringAsFixed(1)}%',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF334155),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Margin Kotor: ${_grossMargin.toStringAsFixed(1)}%',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF334155),
+                        ),
+                      ),
                     ),
-                  ),
+                    Expanded(
+                      child: Text(
+                        _netProfit >= 0
+                            ? 'Laba: ${_shortRp(_netProfit)}'
+                            : 'Rugi: ${_shortRp(-_netProfit)}',
+                        textAlign: TextAlign.right,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: _netProfit >= 0 ? kGreen : kExpense,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                Expanded(
-                  child: Text(
-                    _netProfit >= 0
-                        ? 'Laba: ${_shortRp(_netProfit)}'
-                        : 'Rugi: ${_shortRp(-_netProfit)}',
-                    textAlign: TextAlign.right,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: _netProfit >= 0 ? kGreen : kExpense,
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Markup (vs HPP): ${_markupPercentage.toStringAsFixed(1)}%',
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF64748B),
+                        ),
+                      ),
                     ),
-                  ),
+                    Expanded(
+                      child: Text(
+                        'Laba Kotor: ${_shortRp(_grossProfit)} (HPP: ${_shortRp(_cogs)})',
+                        textAlign: TextAlign.right,
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF64748B),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

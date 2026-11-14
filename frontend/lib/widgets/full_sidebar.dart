@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../services/api_service.dart';
 import '../services/cart_service.dart';
 
 class FullSidebar extends StatelessWidget {
@@ -113,14 +112,10 @@ class FullSidebar extends StatelessWidget {
                     _SidebarMenuItem(
                       icon: Icons.person_rounded,
                       title: 'Profil',
-                      subtitle: 'Pengaturan akun toko & konfigurasi API',
+                      subtitle: 'Pengaturan identitas toko & keamanan',
                       isSelected: selectedIndex == 5,
                       onTap: () => onItemSelected(5),
                     ),
-                    const SizedBox(height: 28),
-
-                    // Quick System Status Card
-                    _buildStatusCard(),
                   ],
                 ),
               ),
@@ -177,103 +172,33 @@ class FullSidebar extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 3),
-                ValueListenableBuilder<bool?>(
-                  valueListenable: ApiService.isConnectedNotifier,
-                  builder: (context, isConn, _) {
-                    final isOnline = isConn == true;
-                    return Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 7,
-                          height: 7,
-                          decoration: BoxDecoration(
-                            color: isOnline
-                                ? const Color(0xFF10B981)
-                                : const Color(0xFF94A3B8),
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          isOnline
-                              ? 'Sistem Online'
-                              : 'Mode Offline Aktif',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: Color(0xFF64748B),
-                          ),
-                        ),
-                      ],
-                    );
-                  },
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 7,
+                      height: 7,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF10B981),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    const Text(
+                      'Kasir POS UMKM',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
           _CloseSidebarButton(
             onPressed: () => Navigator.of(context).pop(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatusCard() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x06000000),
-            blurRadius: 10,
-            offset: Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: const Color(0xFFDCFCE7),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Icon(
-              Icons.offline_pin_rounded,
-              color: Color(0xFF166534),
-              size: 22,
-            ),
-          ),
-          const SizedBox(width: 14),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Penyimpanan Lokal Aktif',
-                  style: TextStyle(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF0F172A),
-                  ),
-                ),
-                SizedBox(height: 2),
-                Text(
-                  'Semua data penjualan tersimpan offline & siap disinkronkan.',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF64748B),
-                    height: 1.35,
-                  ),
-                ),
-              ],
-            ),
           ),
         ],
       ),

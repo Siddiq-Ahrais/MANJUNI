@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:majunih/pages/keranjang_page.dart';
 import 'package:majunih/services/cart_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   setUp(() {
+    SharedPreferences.setMockInitialValues({});
     CartService.clear();
   });
 
@@ -148,6 +150,31 @@ void main() {
 
     expect(find.text('Transaksi Tersimpan!'), findsNothing);
     expect(find.textContaining('Stok Minyak Goreng 1L tidak mencukupi'), findsOneWidget);
+  });
+
+  testWidgets('Produk dengan gambar menampilkan foto produk saat masuk ke KeranjangPage',
+      (WidgetTester tester) async {
+    const sampleBase64Png =
+        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+    CartService.addItem(
+      'Kopi Kapal Api',
+      12000,
+      'bungkus',
+      maxStock: 10,
+      image: sampleBase64Png,
+      category: 'Minuman',
+    );
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: KeranjangPage(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Kopi Kapal Api'), findsOneWidget);
+    expect(find.byType(Image), findsOneWidget);
   });
 }
 

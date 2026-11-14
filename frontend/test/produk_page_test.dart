@@ -45,9 +45,23 @@ void main() {
     expect(find.text('Beras Ramos 5kg'), findsOneWidget);
     expect(find.text('Kopi Kapal Api'), findsOneWidget);
 
-    // Verify category badges
-    expect(find.text('Sembako'), findsWidgets);
-    expect(find.text('Minuman'), findsWidgets);
+    // Verify filter chips exist, while product card category badge UI is removed
+    expect(find.widgetWithText(FilterChip, 'Sembako'), findsOneWidget);
+    expect(find.widgetWithText(FilterChip, 'Minuman'), findsOneWidget);
+    // 'Sembako' & 'Minuman' only appear once (as FilterChips), not as badges on product cards
+    expect(find.text('Sembako'), findsOneWidget);
+    expect(find.text('Minuman'), findsOneWidget);
+
+    // Verify filtering by category still works properly
+    await tester.tap(find.widgetWithText(FilterChip, 'Sembako'));
+    await tester.pumpAndSettle();
+    expect(find.text('Beras Ramos 5kg'), findsOneWidget);
+    expect(find.text('Kopi Kapal Api'), findsNothing);
+
+    await tester.tap(find.widgetWithText(FilterChip, 'Semua'));
+    await tester.pumpAndSettle();
+    expect(find.text('Beras Ramos 5kg'), findsOneWidget);
+    expect(find.text('Kopi Kapal Api'), findsOneWidget);
 
     // Verify no redundant FAB or extra buttons, only single button below product list
     expect(find.byType(FloatingActionButton), findsNothing);
@@ -91,7 +105,10 @@ void main() {
     await tester.enterText(priceField, '38000');
 
     // Select category 'Sembako'
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Sembako'));
+    final sembakoChip = find.widgetWithText(ChoiceChip, 'Sembako');
+    await tester.ensureVisible(sembakoChip);
+    await tester.pumpAndSettle();
+    await tester.tap(sembakoChip);
     await tester.pumpAndSettle();
 
     // Tap "Simpan Produk"
@@ -284,6 +301,8 @@ void main() {
           .setMockMethodCallHandler(channel, null);
     });
 
+    await tester.ensureVisible(find.text('Upload Gambar'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Upload Gambar'));
     await tester.pumpAndSettle();
     expect(find.text('Beras / Sembako'), findsNothing);
@@ -399,6 +418,8 @@ void main() {
           .setMockMethodCallHandler(channel, null);
     });
 
+    await tester.ensureVisible(find.text('Upload Gambar'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Upload Gambar'));
     await tester.pumpAndSettle();
     expect(find.text('Upload Gambar Produk'), findsOneWidget);
@@ -464,5 +485,102 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Stok: 1 cup (1 di keranjang)'), findsOneWidget);
     expect(find.widgetWithText(OutlinedButton, 'Tambah'), findsOneWidget);
+  });
+
+  test('Rumus HPP per unit menghitung modal + ongkir dibagi jumlah barang serta Markup vs Margin', () async {
+    SharedPreferences.setMockInitialValues({});
+    ApiService.resetAllData();
+
+    // Contoh: Beli 100 pcs minuman kemasan modal Rp3.000/pcs (total Rp300.000) dengan ongkir Rp20.000 -> HPP = Rp3.200/pcs
+    await ApiService.addProduct(
+      name: 'Minuman Kemasan',
+      price: 4000,
+      costPrice: 3000,
+      shippingCost: 20000,
+      stock: 100,
+      unit: 'pcs',
+      category: 'Minuman',
+    );
+
+    final products = await ApiService.getProducts();
+    final item = products.firstWhere((p) => p['name'] == 'Minuman Kemasan');
+    expect(item['base_cost_price'], 3000);
+    expect(item['shipping_cost'], 20000);
+    expect(item['cost_price'], 3200); // HPP per unit = 3000 + (20000 / 100) = 3200
+
+    // Contoh kedua: Modal Rp8.000, Jual Rp10.000 (tanpa ongkir) -> Markup 25%, Margin 20%
+    ApiService.resetAllData();
+    await ApiService.addProduct(
+      name: 'Teh Kemasan',
+      price: 10000,
+      costPrice: 8000,
+      stock: 10,
+      unit: 'pcs',
+      category: 'Minuman',
+    );
+    await ApiService.createTransaction(
+      cartItems: [
+        {'name': 'Teh Kemasan', 'qty': 1, 'price': 10000, 'cost_price': 8000, 'unit': 'pcs'},
+      ],
+      itemsSummary: 'Teh Kemasan (1 pcs)',
+      paymentMethod: 'Tunai',
+      totalAmount: 10000,
+    );
+
+    final report = await ApiService.getProfitLossReport();
+    final summary = report['summary'] as Map<String, dynamic>;
+    expect(summary['revenue'], 10000);
+    expect(summary['cogs'], 8000);
+    expect(summary['gross_profit'], 2000);
+    expect(summary['markup_percentage'], 25.0);
+    expect(summary['gross_margin_percentage'], 20.0);
+  });
+
+  testWidgets('Validasi kolom wajib mengarahkan kursor/fokus otomatis ke kolom yang belum diisi',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: ProdukPage(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final tambahBtn = find.widgetWithText(ElevatedButton, 'Tambah Produk');
+    await tester.ensureVisible(tambahBtn);
+    await tester.pumpAndSettle();
+    await tester.tap(tambahBtn);
+    await tester.pumpAndSettle();
+
+    // Tekan Simpan tanpa mengisi Nama Produk -> muncul peringatan & kursor mengarah ke Nama Produk
+    final simpanBtn = find.text('Simpan Produk');
+    await tester.ensureVisible(simpanBtn);
+    await tester.pumpAndSettle();
+    await tester.tap(simpanBtn);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Nama produk wajib diisi!'), findsWidgets);
+    final nameTextField = tester.widget<TextField>(
+      find.widgetWithText(TextField, 'Misal: Beras Ramos, Kopi ABC, dll'),
+    );
+    expect(nameTextField.focusNode?.hasFocus, isTrue);
+
+    // Isi Nama Produk, tapi kosongkan Harga Jual -> tekan Simpan -> kursor mengarah ke Harga Jual
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Misal: Beras Ramos, Kopi ABC, dll'),
+      'Sabun Mandi',
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(simpanBtn);
+    await tester.pumpAndSettle();
+    await tester.tap(simpanBtn);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Harga jual harus lebih dari Rp 0!'), findsWidgets);
+    final priceTextField = tester.widget<TextField>(
+      find.widgetWithText(TextField, '35000'),
+    );
+    expect(priceTextField.focusNode?.hasFocus, isTrue);
   });
 }

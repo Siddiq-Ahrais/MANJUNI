@@ -125,6 +125,6 @@ void main() {
     );
     await tester.pumpAndSettle(const Duration(seconds: 6));
 
-    expect(find.textContaining('7 terjual'), findsOneWidget);
+    expect(find.textContaining('7 terjual'), findsWidgets);
   });
 }

@@ -31,9 +31,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Verify Pelanggan & Info Toko are removed per P0
+    // Verify Pelanggan, Info Toko & Mode Offline indicator are removed
     expect(find.text('Pelanggan'), findsNothing);
     expect(find.text('Info Toko'), findsNothing);
+    expect(find.text('Mode Offline'), findsNothing);
 
     // Verify Produk Terdaftar, Total Transaksi, and Cadangkan Data are present
     expect(find.text('Produk Terdaftar'), findsOneWidget);

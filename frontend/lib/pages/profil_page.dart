@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../services/api_config.dart';
 import '../services/api_service.dart';
 import '../services/cart_service.dart';
 
@@ -17,11 +16,8 @@ class ProfilPage extends StatefulWidget {
 
 class _ProfilPageState extends State<ProfilPage> {
   static const Color kGreen = Color(0xFF1E874B);
-  bool _isOfflineMode = true;
-  bool _isSyncing = false;
   int _productCount = 0;
   int _transactionCount = 0;
-  String _lastSyncText = 'Belum ada sinkronisasi';
   String _storeName = 'Nama Toko Anda';
   String _storeCategory = 'Kategori Toko \u2022 UMKM';
 
@@ -41,7 +37,6 @@ class _ProfilPageState extends State<ProfilPage> {
   void initState() {
     super.initState();
     _loadStoreInfo();
-    _checkStatus(silent: true);
     _loadStats();
     ApiService.dataChangedNotifier.addListener(_onDataChanged);
   }
@@ -53,12 +48,12 @@ class _ProfilPageState extends State<ProfilPage> {
       final cat = prefs.getString('store_category');
       if (!mounted) return;
       setState(() {
-        if (name != null && name.trim().isNotEmpty) {
-          _storeName = name.trim();
-        }
-        if (cat != null && cat.trim().isNotEmpty) {
-          _storeCategory = cat.trim();
-        }
+        _storeName = (name != null && name.trim().isNotEmpty)
+            ? name.trim()
+            : 'Nama Toko Anda';
+        _storeCategory = (cat != null && cat.trim().isNotEmpty)
+            ? cat.trim()
+            : 'Kategori Toko \u2022 UMKM';
       });
     } catch (_) {}
   }
@@ -91,17 +86,20 @@ class _ProfilPageState extends State<ProfilPage> {
       MethodChannel('com.example.majunih/file_export');
 
   Future<String> _saveCsvToDownloads(String fileName, String csvData) async {
-    if (!kIsWeb && Platform.isAndroid) {
-      final savedPath = await _exportChannel.invokeMethod<String>(
-        'saveCsvToDownloads',
-        {
-          'fileName': fileName,
-          'content': csvData,
-        },
-      );
-      if (savedPath != null && savedPath.isNotEmpty) {
-        return savedPath;
-      }
+    if (!kIsWeb &&
+        (Platform.isAndroid || Platform.environment['FLUTTER_TEST'] == 'true')) {
+      try {
+        final savedPath = await _exportChannel.invokeMethod<String>(
+          'saveCsvToDownloads',
+          {
+            'fileName': fileName,
+            'content': csvData,
+          },
+        );
+        if (savedPath != null && savedPath.isNotEmpty) {
+          return savedPath;
+        }
+      } catch (_) {}
     }
 
     Directory? targetDir;
@@ -302,34 +300,6 @@ class _ProfilPageState extends State<ProfilPage> {
     );
   }
 
-  Future<void> _checkStatus({bool silent = false}) async {
-    setState(() => _isSyncing = true);
-    final res = await ApiService.testConnection();
-    if (!mounted) return;
-    setState(() {
-      _isSyncing = false;
-      if (res['success'] == true) {
-        final now = DateTime.now();
-        _lastSyncText =
-            'Hari ini \u2022 ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} \u2022 Tersinkron';
-        _isOfflineMode = false;
-      } else {
-        _isOfflineMode = true;
-      }
-    });
-
-    if (!silent) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(res['message'] as String),
-          backgroundColor:
-              res['success'] == true ? kGreen : const Color(0xFFC62828),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    }
-  }
-
   void _showEditStoreDialog() {
     final nameCtrl = TextEditingController(text: _storeName);
     final categoryCtrl = TextEditingController(text: _storeCategory);
@@ -423,32 +393,6 @@ class _ProfilPageState extends State<ProfilPage> {
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                 ),
-                const SizedBox(height: 14),
-                InkWell(
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _showServerDialog();
-                  },
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 4),
-                    child: Row(
-                      children: [
-                        Icon(Icons.settings_ethernet_rounded, size: 16, color: kGreen),
-                        SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            'Pengaturan Target Server Localhost / IP >',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: kGreen,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
                 const SizedBox(height: 20),
                 Row(
                   children: [
@@ -512,13 +456,71 @@ class _ProfilPageState extends State<ProfilPage> {
     );
   }
 
-  void _showServerDialog() {
-    final ipController = TextEditingController(text: ApiConfig.defaultWifiIp);
-    DeviceTarget selected = ApiConfig.target;
+  void _handlePinMenuTap() {
+    if (ApiService.hasSecurityPin) {
+      _showChangePinDialog();
+    } else {
+      _showSetPinWarningDialog();
+    }
+  }
+
+  void _showSetPinWarningDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Color(0xFFD97706), size: 26),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Peringatan Keamanan PIN',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: const Text(
+          'Perhatian: PIN yang telah diatur TIDAK BISA di-recovery (tidak dapat dilihat kembali).\n\n'
+          'Jika Anda lupa PIN, aplikasi hanya bisa dibuka melalui opsi "Lupa Password" dengan memasukkan Nama Keamanan 1 dan Nama Keamanan 2 yang Anda buat.',
+          style: TextStyle(fontSize: 13.5, color: Color(0xFF374151), height: 1.45),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Batal', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _showSetPinDialog();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: kGreen,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text('Mengerti & Lanjutkan'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showSetPinDialog() {
+    final pinCtrl = TextEditingController();
+    final confirmPinCtrl = TextEditingController();
+    final name1Ctrl = TextEditingController();
+    final name2Ctrl = TextEditingController();
+    bool obscurePin = true;
+    bool obscureConfirm = true;
+    String? errorMessage;
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -537,16 +539,30 @@ class _ProfilPageState extends State<ProfilPage> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE5E7EB),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
                     Row(
                       children: [
                         Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
                             color: const Color(0xFFE8F5E9),
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(10),
                           ),
-                          child: const Icon(Icons.settings_ethernet_rounded,
-                              color: kGreen, size: 24),
+                          child: const Icon(
+                            Icons.lock_outline_rounded,
+                            color: kGreen,
+                            size: 24,
+                          ),
                         ),
                         const SizedBox(width: 12),
                         const Expanded(
@@ -554,12 +570,14 @@ class _ProfilPageState extends State<ProfilPage> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Pengaturan Server Laravel',
+                                'Atur PIN Keamanan',
                                 style: TextStyle(
-                                    fontWeight: FontWeight.bold, fontSize: 16),
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
                               ),
                               Text(
-                                'Konfigurasi target koneksi backend Laravel 11 REST API',
+                                'Masukkan PIN dan 2 nama keamanan untuk mengunci aplikasi',
                                 style: TextStyle(fontSize: 12, color: Colors.grey),
                               ),
                             ],
@@ -567,149 +585,196 @@ class _ProfilPageState extends State<ProfilPage> {
                         ),
                       ],
                     ),
+                    const SizedBox(height: 14),
+                    // Warning Banner: PIN tidak bisa di-recovery
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFFBEB),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFFDE68A)),
+                      ),
+                      child: const Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            Icons.warning_amber_rounded,
+                            color: Color(0xFFD97706),
+                            size: 20,
+                          ),
+                          SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Peringatan: PIN tidak bisa di-recovery dan hanya bisa dibuka melalui opsi Lupa Password dengan memasukkan Nama Keamanan 1 & Nama Keamanan 2.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF92400E),
+                                fontWeight: FontWeight.w600,
+                                height: 1.35,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                     const Divider(height: 24),
-
-                    // Opsi 1: Android Emulator
-                    InkWell(
-                      onTap: () => setModalState(() => selected = DeviceTarget.emulator),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 22,
-                              height: 22,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: selected == DeviceTarget.emulator
-                                      ? kGreen
-                                      : const Color(0xFF9E9E9E),
-                                  width: selected == DeviceTarget.emulator ? 6 : 2,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            const Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('Android Emulator',
-                                      style: TextStyle(
-                                          fontWeight: FontWeight.bold, fontSize: 14)),
-                                  Text(
-                                      'Menggunakan http://10.0.2.2:8000/api/v1 (Emulator)',
-                                      style: TextStyle(
-                                          fontSize: 11, color: Colors.grey)),
-                                ],
-                              ),
-                            ),
-                          ],
+                    const Text(
+                      'Masukkan PIN',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: pinCtrl,
+                      obscureText: obscurePin,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      decoration: InputDecoration(
+                        hintText: 'Masukkan angka PIN',
+                        isDense: true,
+                        prefixIcon: const Icon(Icons.pin_outlined, color: kGreen, size: 20),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            obscurePin
+                                ? Icons.visibility_off_outlined
+                                : Icons.visibility_outlined,
+                            size: 19,
+                            color: Colors.grey,
+                          ),
+                          onPressed: () =>
+                              setModalState(() => obscurePin = !obscurePin),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 12,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
                         ),
                       ),
                     ),
-
-                    // Opsi 2: HP Fisik via Wi-Fi
-                    InkWell(
-                      onTap: () => setModalState(() => selected = DeviceTarget.physicalPhone),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Column(
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  width: 22,
-                                  height: 22,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: selected == DeviceTarget.physicalPhone
-                                          ? kGreen
-                                          : const Color(0xFF9E9E9E),
-                                      width: selected == DeviceTarget.physicalPhone ? 6 : 2,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                const Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text('HP Fisik Android / iOS (Wi-Fi)',
-                                          style: TextStyle(
-                                              fontWeight: FontWeight.bold, fontSize: 14)),
-                                      Text(
-                                          'Laptop dan HP dalam 1 jaringan Wi-Fi',
-                                          style: TextStyle(
-                                              fontSize: 11, color: Colors.grey)),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                            if (selected == DeviceTarget.physicalPhone)
-                              Padding(
-                                padding: const EdgeInsets.only(left: 34, top: 8),
-                                child: TextField(
-                                  controller: ipController,
-                                  decoration: InputDecoration(
-                                    labelText: 'IP Laptop',
-                                    hintText: '192.168.1.68',
-                                    isDense: true,
-                                    contentPadding: const EdgeInsets.symmetric(
-                                        horizontal: 10, vertical: 8),
-                                    border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(8)),
-                                  ),
-                                  style: const TextStyle(fontSize: 13),
-                                ),
-                              ),
-                          ],
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Konfirmasi PIN',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: confirmPinCtrl,
+                      obscureText: obscureConfirm,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      decoration: InputDecoration(
+                        hintText: 'Masukkan PIN yang sama untuk konfirmasi',
+                        isDense: true,
+                        prefixIcon: const Icon(Icons.lock_reset_rounded, color: kGreen, size: 20),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            obscureConfirm
+                                ? Icons.visibility_off_outlined
+                                : Icons.visibility_outlined,
+                            size: 19,
+                            color: Colors.grey,
+                          ),
+                          onPressed: () =>
+                              setModalState(() => obscureConfirm = !obscureConfirm),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 12,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
                         ),
                       ),
                     ),
-
-                    // Opsi 3: Windows Desktop / Web
-                    InkWell(
-                      onTap: () => setModalState(() => selected = DeviceTarget.desktopOrWeb),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 22,
-                              height: 22,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: selected == DeviceTarget.desktopOrWeb
-                                      ? kGreen
-                                      : const Color(0xFF9E9E9E),
-                                  width: selected == DeviceTarget.desktopOrWeb ? 6 : 2,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            const Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('Windows Desktop / Web Browser',
-                                      style: TextStyle(
-                                          fontWeight: FontWeight.bold, fontSize: 14)),
-                                  Text('Menggunakan http://127.0.0.1:8000/api/v1',
-                                      style: TextStyle(
-                                          fontSize: 11, color: Colors.grey)),
-                                ],
-                              ),
-                            ),
-                          ],
+                    const SizedBox(height: 16),
+                    const Divider(height: 1),
+                    const SizedBox(height: 14),
+                    const Text(
+                      'Nama Keamanan (Hanya Huruf & Angka)',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF111827),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    const Text(
+                      'Ketik manual 2 nama keamanan untuk autentikasi & opsi Lupa Password',
+                      style: TextStyle(fontSize: 11.5, color: Color(0xFF6B7280)),
+                    ),
+                    const SizedBox(height: 10),
+                    const Text(
+                      'Nama Keamanan 1',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: name1Ctrl,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9]')),
+                      ],
+                      decoration: InputDecoration(
+                        hintText: 'Ketik Nama Keamanan 1 (huruf & angka)',
+                        isDense: true,
+                        prefixIcon: const Icon(Icons.verified_user_outlined, color: kGreen, size: 20),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 12,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
                         ),
                       ),
                     ),
-
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Nama Keamanan 2',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: name2Ctrl,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9]')),
+                      ],
+                      decoration: InputDecoration(
+                        hintText: 'Ketik Nama Keamanan 2 (huruf & angka)',
+                        isDense: true,
+                        prefixIcon: const Icon(Icons.shield_outlined, color: kGreen, size: 20),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 12,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                    if (errorMessage != null) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFEE2E2),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFFFECACA)),
+                        ),
+                        child: Text(
+                          errorMessage!,
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            color: Color(0xFFB91C1C),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 16),
                     Row(
                       children: [
                         Expanded(
@@ -718,7 +783,8 @@ class _ProfilPageState extends State<ProfilPage> {
                             style: OutlinedButton.styleFrom(
                               padding: const EdgeInsets.symmetric(vertical: 12),
                               shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10)),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
                             ),
                             child: const Text('Batal'),
                           ),
@@ -726,19 +792,43 @@ class _ProfilPageState extends State<ProfilPage> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: ElevatedButton(
-                            onPressed: () {
-                              ApiConfig.setTarget(selected, customIp: ipController.text);
-                              Navigator.pop(ctx);
-                              _checkStatus(silent: false);
+                            onPressed: () async {
+                              final res = await ApiService.setSecurityPin(
+                                pin: pinCtrl.text,
+                                confirmPin: confirmPinCtrl.text,
+                                securityName1: name1Ctrl.text,
+                                securityName2: name2Ctrl.text,
+                              );
+                              if (res['success'] != true) {
+                                setModalState(() {
+                                  errorMessage = res['message']?.toString();
+                                });
+                                return;
+                              }
+                              if (ctx.mounted) Navigator.pop(ctx);
+                              if (mounted) {
+                                setState(() {});
+                                ScaffoldMessenger.of(this.context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      res['message']?.toString() ??
+                                          'PIN keamanan berhasil disimpan!',
+                                    ),
+                                    backgroundColor: kGreen,
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              }
                             },
                             style: ElevatedButton.styleFrom(
                               backgroundColor: kGreen,
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(vertical: 12),
                               shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10)),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
                             ),
-                            child: const Text('Simpan & Uji'),
+                            child: const Text('Simpan PIN'),
                           ),
                         ),
                       ],
@@ -750,6 +840,922 @@ class _ProfilPageState extends State<ProfilPage> {
           },
         );
       },
+    );
+  }
+
+  void _showChangePinDialog() {
+    final oldPinCtrl = TextEditingController();
+    final name1Ctrl = TextEditingController();
+    final name2Ctrl = TextEditingController();
+    final newPinCtrl = TextEditingController();
+    final confirmPinCtrl = TextEditingController();
+    bool obscureOld = true;
+    bool obscureNew = true;
+    bool obscureConfirm = true;
+    String? errorMessage;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 20,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE5E7EB),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE8F5E9),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(
+                            Icons.lock_reset_rounded,
+                            color: kGreen,
+                            size: 24,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Ganti PIN Keamanan',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              Text(
+                                'Verifikasi PIN lama & nama keamanan untuk mengganti PIN',
+                                style: TextStyle(fontSize: 12, color: Colors.grey),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Divider(height: 24),
+                    const Text(
+                      'Autentikasi Keamanan Saat Ini',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF111827),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    const Text(
+                      'PIN Lama',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: oldPinCtrl,
+                      obscureText: obscureOld,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      decoration: InputDecoration(
+                        hintText: 'Masukkan PIN lama Anda',
+                        isDense: true,
+                        prefixIcon: const Icon(Icons.lock_outline_rounded, color: kGreen, size: 20),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            obscureOld
+                                ? Icons.visibility_off_outlined
+                                : Icons.visibility_outlined,
+                            size: 19,
+                            color: Colors.grey,
+                          ),
+                          onPressed: () =>
+                              setModalState(() => obscureOld = !obscureOld),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 12,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Nama Keamanan 1',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: name1Ctrl,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9]')),
+                      ],
+                      decoration: InputDecoration(
+                        hintText: 'Ketik Nama Keamanan 1 (huruf & angka)',
+                        isDense: true,
+                        prefixIcon: const Icon(Icons.verified_user_outlined, color: kGreen, size: 20),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 12,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Nama Keamanan 2',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: name2Ctrl,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9]')),
+                      ],
+                      decoration: InputDecoration(
+                        hintText: 'Ketik Nama Keamanan 2 (huruf & angka)',
+                        isDense: true,
+                        prefixIcon: const Icon(Icons.shield_outlined, color: kGreen, size: 20),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 12,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Divider(height: 1),
+                    const SizedBox(height: 14),
+                    const Text(
+                      'PIN Keamanan Baru',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF111827),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    const Text(
+                      'Masukkan PIN Baru',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: newPinCtrl,
+                      obscureText: obscureNew,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      decoration: InputDecoration(
+                        hintText: 'Masukkan angka PIN baru',
+                        isDense: true,
+                        prefixIcon: const Icon(Icons.pin_outlined, color: kGreen, size: 20),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            obscureNew
+                                ? Icons.visibility_off_outlined
+                                : Icons.visibility_outlined,
+                            size: 19,
+                            color: Colors.grey,
+                          ),
+                          onPressed: () =>
+                              setModalState(() => obscureNew = !obscureNew),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 12,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Konfirmasi PIN Baru',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: confirmPinCtrl,
+                      obscureText: obscureConfirm,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      decoration: InputDecoration(
+                        hintText: 'Masukkan PIN baru yang sama untuk konfirmasi',
+                        isDense: true,
+                        prefixIcon: const Icon(Icons.check_circle_outline_rounded, color: kGreen, size: 20),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            obscureConfirm
+                                ? Icons.visibility_off_outlined
+                                : Icons.visibility_outlined,
+                            size: 19,
+                            color: Colors.grey,
+                          ),
+                          onPressed: () => setModalState(
+                            () => obscureConfirm = !obscureConfirm,
+                          ),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 12,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                    if (errorMessage != null) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFEE2E2),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFFFECACA)),
+                        ),
+                        child: Text(
+                          errorMessage!,
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            color: Color(0xFFB91C1C),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 10),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: () {
+                          if (ctx.mounted) Navigator.pop(ctx);
+                          _showChangeSecurityNamesDialog();
+                        },
+                        icon: const Icon(
+                          Icons.verified_user_outlined,
+                          size: 18,
+                          color: kGreen,
+                        ),
+                        label: const Text(
+                          'Ganti Nama Keamanan (Wajib 2 Nama Serentak)',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: kGreen,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: () async {
+                          final res = await ApiService.disableSecurityPinWithAuth(
+                            oldPin: oldPinCtrl.text,
+                            securityName1: name1Ctrl.text,
+                            securityName2: name2Ctrl.text,
+                          );
+                          if (res['success'] != true) {
+                            setModalState(() {
+                              errorMessage = res['message']?.toString();
+                            });
+                            return;
+                          }
+                          if (ctx.mounted) Navigator.pop(ctx);
+                          if (mounted) {
+                            setState(() {});
+                            ScaffoldMessenger.of(this.context).showSnackBar(
+                              const SnackBar(
+                                content: Text('PIN keamanan berhasil dinonaktifkan.'),
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          }
+                        },
+                        icon: const Icon(
+                          Icons.delete_outline_rounded,
+                          size: 18,
+                          color: Color(0xFFEF4444),
+                        ),
+                        label: const Text(
+                          'Nonaktifkan PIN (Wajib Isi PIN Lama & Nama Keamanan)',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFFEF4444),
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            child: const Text('Batal'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () async {
+                              final res = await ApiService.changeSecurityPin(
+                                oldPin: oldPinCtrl.text,
+                                securityName1: name1Ctrl.text,
+                                securityName2: name2Ctrl.text,
+                                newPin: newPinCtrl.text,
+                                confirmNewPin: confirmPinCtrl.text,
+                              );
+                              if (res['success'] != true) {
+                                setModalState(() {
+                                  errorMessage = res['message']?.toString();
+                                });
+                                return;
+                              }
+                              if (ctx.mounted) Navigator.pop(ctx);
+                              if (mounted) {
+                                setState(() {});
+                                ScaffoldMessenger.of(this.context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      res['message']?.toString() ??
+                                          'PIN keamanan berhasil diganti!',
+                                    ),
+                                    backgroundColor: kGreen,
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: kGreen,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            child: const Text('Ganti PIN'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showChangeSecurityNamesDialog() {
+    if (!ApiService.hasSecurityPin) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Atur PIN Keamanan terlebih dahulu sebelum mengganti Nama Keamanan.',
+          ),
+          backgroundColor: Color(0xFFD97706),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      _showSetPinWarningDialog();
+      return;
+    }
+
+    final currentPinCtrl = TextEditingController();
+    final lastChar1Ctrl = TextEditingController();
+    final lastChar2Ctrl = TextEditingController();
+    final newName1Ctrl = TextEditingController();
+    final newName2Ctrl = TextEditingController();
+    final pinFocus = FocusNode();
+    final lastChar1Focus = FocusNode();
+    final lastChar2Focus = FocusNode();
+    final name1Focus = FocusNode();
+    final name2Focus = FocusNode();
+    bool obscurePin = true;
+    String? errorMessage;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 20,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+              ),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.85,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE5E7EB),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE8F5E9),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(
+                            Icons.verified_user_outlined,
+                            color: kGreen,
+                            size: 24,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Ganti Nama Keamanan',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              Text(
+                                'Butuh PIN saat ini & 1 karakter terakhir kedua nama keamanan',
+                                style: TextStyle(fontSize: 12, color: Colors.grey),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Flexible(
+                      child: SingleChildScrollView(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF0FDF4),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: const Color(0xFFBBF7D0)),
+                              ),
+                              child: const Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Icon(
+                                    Icons.info_outline_rounded,
+                                    color: kGreen,
+                                    size: 20,
+                                  ),
+                                  SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      'Syarat: Masukkan PIN saat ini serta 1 karakter terakhir dari Nama Keamanan 1 & Nama Keamanan 2 saat ini (misal Nama 1 "indah" \u2192 "h", Nama 2 "laut" \u2192 "t"), lalu isi kedua Nama Keamanan baru secara serentak.',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Color(0xFF166534),
+                                        fontWeight: FontWeight.w600,
+                                        height: 1.35,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Divider(height: 24),
+                            const Text(
+                              'Verifikasi Keamanan Saat Ini',
+                              style: TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF111827),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            const Text(
+                              'PIN Saat Ini *',
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 6),
+                            TextField(
+                              controller: currentPinCtrl,
+                              focusNode: pinFocus,
+                              obscureText: obscurePin,
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                              decoration: InputDecoration(
+                                hintText: 'Masukkan PIN saat ini',
+                                isDense: true,
+                                prefixIcon: const Icon(
+                                  Icons.lock_outline_rounded,
+                                  color: kGreen,
+                                  size: 20,
+                                ),
+                                suffixIcon: IconButton(
+                                  icon: Icon(
+                                    obscurePin
+                                        ? Icons.visibility_off_outlined
+                                        : Icons.visibility_outlined,
+                                    size: 19,
+                                    color: Colors.grey,
+                                  ),
+                                  onPressed: () =>
+                                      setModalState(() => obscurePin = !obscurePin),
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 12,
+                                ),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Text(
+                                        'Karakter Terakhir Nama 1 *',
+                                        style: TextStyle(
+                                          fontSize: 12.5,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      TextField(
+                                        controller: lastChar1Ctrl,
+                                        focusNode: lastChar1Focus,
+                                        inputFormatters: [
+                                          LengthLimitingTextInputFormatter(1),
+                                          FilteringTextInputFormatter.allow(
+                                            RegExp(r'[a-zA-Z0-9]'),
+                                          ),
+                                        ],
+                                        decoration: InputDecoration(
+                                          hintText: 'Misal: "indah" \u2192 h',
+                                          isDense: true,
+                                          prefixIcon: const Icon(
+                                            Icons.short_text_rounded,
+                                            color: kGreen,
+                                            size: 20,
+                                          ),
+                                          contentPadding: const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 12,
+                                          ),
+                                          border: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(10),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Text(
+                                        'Karakter Terakhir Nama 2 *',
+                                        style: TextStyle(
+                                          fontSize: 12.5,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      TextField(
+                                        controller: lastChar2Ctrl,
+                                        focusNode: lastChar2Focus,
+                                        inputFormatters: [
+                                          LengthLimitingTextInputFormatter(1),
+                                          FilteringTextInputFormatter.allow(
+                                            RegExp(r'[a-zA-Z0-9]'),
+                                          ),
+                                        ],
+                                        decoration: InputDecoration(
+                                          hintText: 'Misal: "laut" \u2192 t',
+                                          isDense: true,
+                                          prefixIcon: const Icon(
+                                            Icons.short_text_rounded,
+                                            color: kGreen,
+                                            size: 20,
+                                          ),
+                                          contentPadding: const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 12,
+                                          ),
+                                          border: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(10),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 14),
+                            const Divider(height: 1),
+                            const SizedBox(height: 14),
+                            const Text(
+                              'Nama Keamanan Baru (Wajib Diganti Serentak)',
+                              style: TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF111827),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            const Text(
+                              'Nama Keamanan 1 Baru *',
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 6),
+                            TextField(
+                              controller: newName1Ctrl,
+                              focusNode: name1Focus,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9]')),
+                              ],
+                              decoration: InputDecoration(
+                                hintText: 'Ketik Nama Keamanan 1 baru (huruf & angka)',
+                                isDense: true,
+                                prefixIcon: const Icon(
+                                  Icons.verified_user_outlined,
+                                  color: kGreen,
+                                  size: 20,
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 12,
+                                ),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            const Text(
+                              'Nama Keamanan 2 Baru *',
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 6),
+                            TextField(
+                              controller: newName2Ctrl,
+                              focusNode: name2Focus,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9]')),
+                              ],
+                              decoration: InputDecoration(
+                                hintText: 'Ketik Nama Keamanan 2 baru (huruf & angka)',
+                                isDense: true,
+                                prefixIcon: const Icon(
+                                  Icons.shield_outlined,
+                                  color: kGreen,
+                                  size: 20,
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 12,
+                                ),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                            ),
+                            if (errorMessage != null) ...[
+                              const SizedBox(height: 12),
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 10,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFEE2E2),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: const Color(0xFFFECACA)),
+                                ),
+                                child: Text(
+                                  errorMessage!,
+                                  style: const TextStyle(
+                                    fontSize: 12.5,
+                                    color: Color(0xFFB91C1C),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            child: const Text('Batal'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () async {
+                              if (currentPinCtrl.text.trim().isEmpty) {
+                                pinFocus.requestFocus();
+                              } else if (lastChar1Ctrl.text.trim().isEmpty) {
+                                lastChar1Focus.requestFocus();
+                              } else if (lastChar2Ctrl.text.trim().isEmpty) {
+                                lastChar2Focus.requestFocus();
+                              } else if (newName1Ctrl.text.trim().isEmpty) {
+                                name1Focus.requestFocus();
+                              } else if (newName2Ctrl.text.trim().isEmpty) {
+                                name2Focus.requestFocus();
+                              }
+                              final res = await ApiService.changeSecurityNames(
+                                currentPin: currentPinCtrl.text,
+                                lastCharName1: lastChar1Ctrl.text,
+                                lastCharName2: lastChar2Ctrl.text,
+                                newSecurityName1: newName1Ctrl.text,
+                                newSecurityName2: newName2Ctrl.text,
+                              );
+                              if (res['success'] != true) {
+                                setModalState(() {
+                                  errorMessage = res['message']?.toString();
+                                });
+                                return;
+                              }
+                              if (ctx.mounted) Navigator.pop(ctx);
+                              if (mounted) {
+                                setState(() {});
+                                ScaffoldMessenger.of(this.context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      res['message']?.toString() ??
+                                          'Kedua Nama Keamanan berhasil diganti secara serentak!',
+                                    ),
+                                    backgroundColor: kGreen,
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: kGreen,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            child: const Text('Simpan Nama Keamanan'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showClearAllAppDataDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.delete_forever_rounded, color: Color(0xFFEF4444), size: 26),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Kosongkan Seluruh Data Aplikasi',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: const Text(
+          'Seluruh data produk, riwayat transaksi, isi keranjang, dan pengaturan akan dihapus bersih sehingga aplikasi kembali kosong seperti baru pertama kali digunakan.\n\nLanjutkan pengosongan data?',
+          style: TextStyle(fontSize: 13.5, color: Color(0xFF374151), height: 1.45),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Batal', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await ApiService.clearAllAppData();
+              if (!mounted) return;
+              await _loadStoreInfo();
+              await _loadStats();
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Seluruh data aplikasi berhasil dikosongkan seperti baru pertama kali digunakan.',
+                  ),
+                  backgroundColor: kGreen,
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFEF4444),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text('Ya, Kosongkan Semua'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -926,141 +1932,6 @@ class _ProfilPageState extends State<ProfilPage> {
             ),
             const SizedBox(height: 12),
 
-            // Settings Card (Mode Offline & Sinkronisasi)
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFF0F0F0), width: 1.2),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x08000000),
-                    blurRadius: 4,
-                    offset: Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  // Row 1: Mode Offline Toggle
-                  Row(
-                    children: [
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFD1F2D9),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Icon(
-                          Icons.access_time_rounded,
-                          color: Color(0xFF1E874B),
-                          size: 24,
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      const Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Mode Offline',
-                              style: TextStyle(
-                                fontSize: 14.5,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF111827),
-                              ),
-                            ),
-                            SizedBox(height: 1),
-                            Text(
-                              'Data disimpan di perangkat',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Color(0xFF6B7280),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Switch(
-                        value: _isOfflineMode,
-                        activeThumbColor: Colors.white,
-                        activeTrackColor: const Color(0xFF1E874B),
-                        onChanged: (val) {
-                          setState(() => _isOfflineMode = val);
-                          if (!val) {
-                            _checkStatus(silent: false);
-                          }
-                        },
-                      ),
-                    ],
-                  ),
-                  const Divider(height: 24, color: Color(0xFFF0F0F0)),
-
-                  // Row 2: Sinkronisasi terakhir & Tombol Sinkron
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Sinkronisasi terakhir',
-                              style: TextStyle(
-                                fontSize: 13.5,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF111827),
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              _lastSyncText,
-                              style: const TextStyle(
-                                fontSize: 11.5,
-                                color: Color(0xFF6B7280),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      OutlinedButton(
-                        onPressed: _isSyncing ? null : () => _checkStatus(silent: false),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF1E874B),
-                          side: const BorderSide(color: Color(0xFF1E874B), width: 1.2),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 8),
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                        child: _isSyncing
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Color(0xFF1E874B),
-                                ),
-                              )
-                            : const Text(
-                                'Sinkron',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 13,
-                                ),
-                              ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-
             // Menu List Card (matching Image 3)
             Container(
               decoration: BoxDecoration(
@@ -1078,11 +1949,44 @@ class _ProfilPageState extends State<ProfilPage> {
               child: Column(
                 children: [
                   _MenuRowItem(
+                    icon: ApiService.hasSecurityPin
+                        ? Icons.lock_reset_rounded
+                        : Icons.lock_outline_rounded,
+                    iconBg: const Color(0xFFD1F2D9),
+                    iconColor: const Color(0xFF1E874B),
+                    title: ApiService.hasSecurityPin
+                        ? 'Ganti PIN Keamanan'
+                        : 'Atur PIN Keamanan',
+                    subtitle: ApiService.hasSecurityPin
+                        ? 'PIN aktif \u2022 Verifikasi PIN lama & nama keamanan'
+                        : 'Opsional \u2022 Lindungi aplikasi dengan PIN',
+                    onTap: _handlePinMenuTap,
+                  ),
+                  const Divider(height: 1, color: Color(0xFFF0F0F0)),
+                  _MenuRowItem(
+                    icon: Icons.verified_user_outlined,
+                    iconBg: const Color(0xFFD1F2D9),
+                    iconColor: const Color(0xFF1E874B),
+                    title: 'Ganti Nama Keamanan',
+                    subtitle: 'Syarat: PIN saat ini & 1 karakter terakhir kedua nama',
+                    onTap: _showChangeSecurityNamesDialog,
+                  ),
+                  const Divider(height: 1, color: Color(0xFFF0F0F0)),
+                  _MenuRowItem(
                     icon: Icons.upload_outlined,
                     iconBg: const Color(0xFFD1F2D9),
                     iconColor: const Color(0xFF1E874B),
                     title: 'Cadangkan Data',
                     onTap: _showExportTransactionsDialog,
+                  ),
+                  const Divider(height: 1, color: Color(0xFFF0F0F0)),
+                  _MenuRowItem(
+                    icon: Icons.cleaning_services_outlined,
+                    iconBg: const Color(0xFFFEE2E2),
+                    iconColor: const Color(0xFFEF4444),
+                    title: 'Kosongkan Data Aplikasi',
+                    subtitle: 'Reset produk & transaksi seperti pengguna baru',
+                    onTap: _showClearAllAppDataDialog,
                   ),
                 ],
               ),
@@ -1201,6 +2105,7 @@ class _MenuRowItem extends StatelessWidget {
   final Color iconBg;
   final Color iconColor;
   final String title;
+  final String? subtitle;
   final VoidCallback onTap;
 
   const _MenuRowItem({
@@ -1208,6 +2113,7 @@ class _MenuRowItem extends StatelessWidget {
     required this.iconBg,
     required this.iconColor,
     required this.title,
+    this.subtitle,
     required this.onTap,
   });
 
@@ -1231,13 +2137,28 @@ class _MenuRowItem extends StatelessWidget {
             ),
             const SizedBox(width: 14),
             Expanded(
-              child: Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 14.5,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF111827),
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF111827),
+                    ),
+                  ),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle!,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF6B7280),
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
             const Icon(

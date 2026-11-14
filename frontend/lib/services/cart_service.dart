@@ -1,4 +1,7 @@
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class CartItem {
   final dynamic productId;
@@ -36,11 +39,56 @@ class CartItem {
       'qty': qty,
     };
   }
+
+  factory CartItem.fromMap(Map<String, dynamic> map) {
+    return CartItem(
+      productId: map['product_id'] ?? map['id'],
+      name: (map['name'] ?? '').toString(),
+      price: (map['price'] as num?)?.toInt() ?? 0,
+      costPrice: (map['cost_price'] as num?)?.toInt() ?? 0,
+      unit: (map['unit'] ?? 'pcs').toString(),
+      maxStock: (map['max_stock'] as num?)?.toInt(),
+      image: map['image']?.toString(),
+      category: map['category']?.toString(),
+      qty: (map['qty'] as num?)?.toInt() ?? 1,
+    );
+  }
 }
 
 class CartService {
+  static const String cartStorageKey = 'mj_cart_v2';
+
   // Initial cart populated as empty for guest mode
   static final ValueNotifier<List<CartItem>> cartNotifier = ValueNotifier<List<CartItem>>([]);
+
+  static Future<void> loadLocalCart() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('mj_cart_v1');
+      final raw = prefs.getString(cartStorageKey);
+      if (raw == null || raw.isEmpty) {
+        cartNotifier.value = [];
+        return;
+      }
+      final List decoded = jsonDecode(raw) as List;
+      cartNotifier.value = decoded
+          .whereType<Map>()
+          .map((e) => CartItem.fromMap(Map<String, dynamic>.from(e)))
+          .toList();
+    } catch (_) {}
+  }
+
+  static Future<void> _persistCart() async {
+    await runZonedGuarded(() async {
+      final prefs = await SharedPreferences.getInstance();
+      if (cartNotifier.value.isEmpty) {
+        await prefs.remove(cartStorageKey);
+      } else {
+        final encoded = jsonEncode(cartNotifier.value.map((e) => e.toMap()).toList());
+        await prefs.setString(cartStorageKey, encoded);
+      }
+    }, (_, __) {});
+  }
 
   static int get totalCount => cartNotifier.value.fold(0, (sum, item) => sum + item.qty);
   static int get typesCount => cartNotifier.value.length;
@@ -76,9 +124,19 @@ class CartService {
         },
         orElse: () => <String, dynamic>{},
       );
-      if (match.isNotEmpty && match['stock'] != null) {
-        final int latestStock = (match['stock'] as num).toInt();
-        if (item.maxStock != latestStock) {
+      if (match.isNotEmpty) {
+        final int? latestStock =
+            match['stock'] != null ? (match['stock'] as num).toInt() : item.maxStock;
+        final String? latestImg = match['image']?.toString().trim();
+        final String? resolvedImage =
+            (latestImg != null && latestImg.isNotEmpty) ? latestImg : item.image;
+        final String? latestCat =
+            (match['category'] ?? match['jenis'])?.toString().trim();
+        final String? resolvedCategory =
+            (latestCat != null && latestCat.isNotEmpty) ? latestCat : item.category;
+        if (item.maxStock != latestStock ||
+            item.image != resolvedImage ||
+            item.category != resolvedCategory) {
           changed = true;
           return CartItem(
             productId: match['id'] ?? item.productId,
@@ -87,8 +145,8 @@ class CartService {
             costPrice: item.costPrice,
             unit: item.unit,
             maxStock: latestStock,
-            image: item.image,
-            category: item.category,
+            image: resolvedImage,
+            category: resolvedCategory,
             qty: item.qty,
           );
         }
@@ -97,6 +155,7 @@ class CartService {
     }).toList();
     if (changed) {
       cartNotifier.value = updated;
+      _persistCart();
     }
   }
 
@@ -152,6 +211,7 @@ class CartService {
       ));
     }
     cartNotifier.value = list;
+    _persistCart();
     return true;
   }
 
@@ -184,6 +244,7 @@ class CartService {
       );
     }
     cartNotifier.value = list;
+    _persistCart();
     return true;
   }
 
@@ -192,9 +253,11 @@ class CartService {
     final list = List<CartItem>.from(cartNotifier.value);
     list.removeAt(index);
     cartNotifier.value = list;
+    _persistCart();
   }
 
   static void clear() {
     cartNotifier.value = [];
+    _persistCart();
   }
 }
